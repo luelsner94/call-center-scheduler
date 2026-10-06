@@ -1688,11 +1688,44 @@ class Handler(BaseHTTPRequestHandler):
         if path == "/api/health":
             gb_lat, gb_lng = geocode_address("Green Bay, WI")
             sey_lat, sey_lng = geocode_address("Seymour, WI")
+            # Also run a full scheduling test for Seymour WI
+            sched_result = None
+            sched_error  = None
+            try:
+                reps = get_cached_reps() or []
+                rep_cfg = load_rep_config()
+                for rep in reps:
+                    cfg = rep_cfg.get(rep["id"], {})
+                    rep["priority_pct"]     = cfg.get("priority", 50)
+                    rep["homeAddress"]      = cfg.get("homeAddress", "")
+                    rep["repClass"]         = cfg.get("repClass", "")
+                    rep["apptDurationMins"] = cfg.get("apptDurationMins", 45)
+                reps = [r for r in reps if rep_cfg.get(r["id"], {}).get("enabled", True)]
+                class_configs = load_sched_config()
+                sched_cfg  = class_configs
+                max_window = max((v.get("maxDaysOut", 7) for v in sched_cfg.values()), default=7)
+                end_str    = (date.today() + timedelta(days=max_window + 1)).isoformat()
+                all_appts  = get_cached_appointments(date.today().isoformat(), end_str)
+                # Use Seymour WI coordinates
+                test_lat, test_lng = 44.5582249, -88.3270347
+                result = find_schedule_options(test_lat, test_lng, reps, all_appts, class_configs=class_configs)
+                sched_result = {
+                    "optionCount": len(result.get("options", [])),
+                    "extraCount":  len(result.get("extraOptions", [])),
+                    "repCount": len(reps),
+                    "options": [{"rep": o["rep"].get("name","?"), "date": o["date"], "time": o["timeLabel"],
+                                 "driveMinutes": o["driveMinutes"], "repClass": o["rep"].get("repClass","")}
+                                for o in result.get("options", [])[:3]],
+                }
+            except Exception as e:
+                sched_error = str(e)
             self.send_json({
                 "status": "ok",
                 "googleMapsKeyPresent": bool(GMAPS_KEY),
                 "geocodeGreenBay":  {"lat": gb_lat,  "lng": gb_lng,  "ok": gb_lat is not None},
                 "geocodeSeymourWI": {"lat": sey_lat, "lng": sey_lng, "ok": sey_lat is not None},
+                "scheduleTest": sched_result,
+                "scheduleError": sched_error,
             })
             return
 
