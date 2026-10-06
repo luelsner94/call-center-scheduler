@@ -782,11 +782,14 @@ def geocode_address(address):
         url = f"https://maps.googleapis.com/maps/api/geocode/json?{params}"
         with urllib.request.urlopen(url, timeout=8) as resp:
             data = json.loads(resp.read().decode())
-        if data["results"]:
+        status = data.get("status", "UNKNOWN")
+        if status == "OK" and data.get("results"):
             loc = data["results"][0]["geometry"]["location"]
             result = loc["lat"], loc["lng"]
             _geocode_cache[address] = result
             return result
+        else:
+            print(f"[Maps] geocode status={status!r} for {address!r} (error_message={data.get('error_message','')})")
     except Exception as e:
         print(f"[Maps] geocode failed: {e}")
     _geocode_cache[address] = (None, None)
@@ -830,13 +833,21 @@ REP_CLASS_CITIES = {
 
 def rep_home_drive_to(rep, dest_lat, dest_lng, departure_dt=None):
     """Drive time from rep's home address (or class city fallback) to destination. Returns (mins, origin_label)."""
-    home   = rep.get("homeAddress", "").strip()
-    cls    = rep.get("repClass", "").strip().lower()
-    origin = home or REP_CLASS_CITIES.get(cls, "")
-    if origin:
-        hlat, hlng = geocode_address(origin)
+    home = rep.get("homeAddress", "").strip()
+    cls  = rep.get("repClass", "").strip().lower()
+    # Try home address first
+    if home:
+        hlat, hlng = geocode_address(home)
         if hlat and hlng:
-            return get_drive_time_minutes(hlat, hlng, dest_lat, dest_lng, departure_dt), origin
+            return get_drive_time_minutes(hlat, hlng, dest_lat, dest_lng, departure_dt), home
+        print(f"[Maps] rep {rep.get('id')} homeAddress geocode failed for {home!r}, trying class city fallback")
+    # Fall back to class city
+    city = REP_CLASS_CITIES.get(cls, "")
+    if city:
+        hlat, hlng = geocode_address(city)
+        if hlat and hlng:
+            return get_drive_time_minutes(hlat, hlng, dest_lat, dest_lng, departure_dt), city
+        print(f"[Maps] rep {rep.get('id')} class city geocode also failed for {city!r}")
     return 9999, ""  # unknown origin — exclude from scheduling (no homeAddress or repClass configured)
 
 def find_schedule_options(customer_lat, customer_lng, reps, all_appointments,
@@ -1981,6 +1992,57 @@ class Handler(BaseHTTPRequestHandler):
             return
 
         # â"€â"€ API: close-rate report â"€â"€
+        # ── API: scheduling diagnostics (admin only) ──
+        if path == "/api/debug-schedule":
+            if not self._require_admin():
+                return
+            rep_cfg = load_rep_config()
+            sched_cfg = load_sched_config()
+            reps = get_cached_reps() or []
+            for rep in reps:
+                cfg = rep_cfg.get(rep["id"], {})
+                rep["homeAddress"]  = cfg.get("homeAddress", "")
+                rep["repClass"]     = cfg.get("repClass", "")
+                rep["priority_pct"] = cfg.get("priority", 50)
+                rep["enabled"]      = cfg.get("enabled", True)
+            test_lat, test_lng = 44.5062582, -88.3332937  # Seymour WI
+            rep_debug = []
+            for rep in reps:
+                home = rep.get("homeAddress", "").strip()
+                cls  = rep.get("repClass", "").strip().lower()
+                city = REP_CLASS_CITIES.get(cls, "")
+                hlat, hlng = geocode_address(home) if home else (None, None)
+                city_lat, city_lng = geocode_address(city) if city else (None, None)
+                drive = None
+                if hlat and hlng:
+                    drive = get_drive_time_minutes(hlat, hlng, test_lat, test_lng)
+                elif city_lat and city_lng:
+                    drive = get_drive_time_minutes(city_lat, city_lng, test_lat, test_lng)
+                rep_debug.append({
+                    "id": rep["id"], "name": rep.get("name",""),
+                    "enabled": rep.get("enabled", True),
+                    "repClass": rep.get("repClass",""),
+                    "homeAddress": home,
+                    "homeGeocoded": hlat is not None,
+                    "homeLat": hlat, "homeLng": hlng,
+                    "classCityFallback": city,
+                    "classCityGeocoded": city_lat is not None,
+                    "driveToSeymourWI": drive,
+                })
+            test_addr = "740 Woodside Drive Seymour, WI 54165"
+            test_result = geocode_address(test_addr)
+            now = datetime.now()
+            self.send_json({
+                "serverTimeUTC": now.isoformat(),
+                "repCount": len(reps),
+                "schedClasses": list(sched_cfg.keys()),
+                "googleMapsKeyPresent": bool(GMAPS_KEY),
+                "testGeocode": {"address": test_addr, "result": list(test_result)},
+                "geocodeCacheSize": len(_geocode_cache),
+                "reps": rep_debug,
+            })
+            return
+
         if path == "/api/reports/close-rates":
             if not self._require_admin():
                 return
