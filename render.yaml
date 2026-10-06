@@ -17,7 +17,7 @@ services:
       - key: GOOGLE_MAPS_API_KEY
         sync: false        # set manually in Render dashboard
       - key: PORT
-        value: "8080"
+        value: "10000"
     disk:
       name: scheduler-data
       mountPath: /data
