@@ -1684,6 +1684,18 @@ class Handler(BaseHTTPRequestHandler):
                 self.send_error(404, "index.html not found")
             return
 
+        # ── Public health / geocode test (no auth required) ──
+        if path == "/api/health":
+            gb_lat, gb_lng = geocode_address("Green Bay, WI")
+            sey_lat, sey_lng = geocode_address("Seymour, WI")
+            self.send_json({
+                "status": "ok",
+                "googleMapsKeyPresent": bool(GMAPS_KEY),
+                "geocodeGreenBay":  {"lat": gb_lat,  "lng": gb_lng,  "ok": gb_lat is not None},
+                "geocodeSeymourWI": {"lat": sey_lat, "lng": sey_lng, "ok": sey_lat is not None},
+            })
+            return
+
         # All remaining API routes require a valid session
         if path.startswith("/api/") and not self._require_auth():
             return
