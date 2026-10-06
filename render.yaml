@@ -1,0 +1,24 @@
+services:
+  - type: web
+    name: call-center-scheduler
+    runtime: python
+    buildCommand: "pip install --upgrade pip"
+    startCommand: "python server.py"
+    plan: starter          # $7/mo — always on, never sleeps
+    envVars:
+      - key: DEMO_MODE
+        value: "false"
+      - key: DATA_DIR
+        value: "/data"
+      - key: BUILDER_PRIME_API_KEY
+        sync: false        # set manually in Render dashboard (never commit real keys)
+      - key: BUILDER_PRIME_BASE_URL
+        value: "https://bam.builderprime.com"
+      - key: GOOGLE_MAPS_API_KEY
+        sync: false        # set manually in Render dashboard
+      - key: PORT
+        value: "8080"
+    disk:
+      name: scheduler-data
+      mountPath: /data
+      sizeGB: 1            # $0.25/mo — stores rep config, scheduling config, user accounts

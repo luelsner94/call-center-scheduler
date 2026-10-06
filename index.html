@@ -1,0 +1,2371 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+<meta charset="UTF-8" />
+<meta name="viewport" content="width=device-width, initial-scale=1.0" />
+<title>Call Center Scheduler</title>
+<style>
+  /* ── Reset & base ───────────────────────────────────────────────────────── */
+  *, *::before, *::after { box-sizing: border-box; margin: 0; padding: 0; }
+  :root {
+    --bg:        #0f1117;
+    --surface:   #1a1d27;
+    --surface2:  #22263a;
+    --border:    #2e3348;
+    --text:      #e8eaf0;
+    --muted:     #7a80a0;
+    --accent:    #6366f1;
+    --accent-lt: #818cf8;
+    --green:     #10b981;
+    --amber:     #f59e0b;
+    --red:       #ef4444;
+    --radius:    12px;
+    --shadow:    0 4px 24px rgba(0,0,0,.45);
+  }
+  html, body { height: 100%; background: var(--bg); color: var(--text); font-family: 'Segoe UI', system-ui, sans-serif; font-size: 15px; }
+
+  /* ── Layout ─────────────────────────────────────────────────────────────── */
+  .app { display: grid; grid-template-rows: 56px 1fr; height: 100vh; }
+
+  /* ── Header ─────────────────────────────────────────────────────────────── */
+  header {
+    display: flex; align-items: center; gap: 14px;
+    padding: 0 24px;
+    background: var(--surface);
+    border-bottom: 1px solid var(--border);
+  }
+  .logo { display: flex; align-items: center; gap: 8px; font-weight: 700; font-size: 17px; color: var(--accent-lt); white-space: nowrap; }
+  .logo svg { flex-shrink: 0; }
+  .status-pill {
+    margin-left: auto; display: flex; align-items: center; gap: 6px;
+    font-size: 12px; color: var(--muted);
+    background: var(--surface2); border: 1px solid var(--border);
+    padding: 4px 10px; border-radius: 20px;
+  }
+  .dot { width: 7px; height: 7px; border-radius: 50%; background: var(--green); }
+  .dot.demo { background: var(--amber); }
+
+  /* ── Main columns ───────────────────────────────────────────────────────── */
+  main {
+    display: grid;
+    grid-template-columns: 340px 1fr;
+    overflow: hidden;
+  }
+  .panel { overflow-y: auto; padding: 20px; }
+  .left  { background: var(--surface); border-right: 1px solid var(--border); }
+  .right { background: var(--bg); }
+
+  /* ── Search ─────────────────────────────────────────────────────────────── */
+  .search-wrap { position: relative; margin-bottom: 18px; }
+  .search-wrap input {
+    width: 100%; padding: 11px 14px 11px 38px;
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); color: var(--text); font-size: 14px;
+    outline: none; transition: border-color .2s;
+  }
+  .search-wrap input:focus { border-color: var(--accent); }
+  .search-wrap input::placeholder { color: var(--muted); }
+  .search-icon { position: absolute; left: 12px; top: 50%; transform: translateY(-50%); color: var(--muted); pointer-events: none; }
+
+  /* ── Contact results ────────────────────────────────────────────────────── */
+  .contacts-list { display: flex; flex-direction: column; gap: 6px; }
+  .contact-card {
+    padding: 12px 14px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 10px;
+    cursor: pointer; transition: border-color .2s, background .2s;
+  }
+  .contact-card:hover, .contact-card.active {
+    border-color: var(--accent); background: #1e2035;
+  }
+  .contact-name { font-weight: 600; font-size: 14px; }
+  .contact-meta { font-size: 12px; color: var(--muted); margin-top: 2px; }
+  .contact-addr { font-size: 12px; color: var(--muted); margin-top: 3px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; }
+
+  /* ── Empty / loading states ─────────────────────────────────────────────── */
+  .empty {
+    text-align: center; padding: 40px 16px;
+    color: var(--muted); font-size: 13px;
+  }
+  .empty .icon { font-size: 32px; margin-bottom: 8px; }
+  .spinner {
+    display: inline-block; width: 18px; height: 18px;
+    border: 2px solid var(--border); border-top-color: var(--accent);
+    border-radius: 50%; animation: spin .7s linear infinite;
+  }
+  @keyframes spin { to { transform: rotate(360deg); } }
+
+  /* ── Right panel header ─────────────────────────────────────────────────── */
+  .right-header {
+    display: flex; align-items: flex-start; justify-content: space-between;
+    margin-bottom: 20px; flex-wrap: wrap; gap: 10px;
+  }
+  .customer-summary h2 { font-size: 22px; font-weight: 700; }
+  .customer-summary p  { font-size: 13px; color: var(--muted); margin-top: 3px; }
+  .refresh-btn {
+    padding: 8px 16px; border-radius: 8px;
+    background: var(--surface); border: 1px solid var(--border);
+    color: var(--text); font-size: 13px; cursor: pointer; white-space: nowrap;
+    display: flex; align-items: center; gap: 6px; transition: border-color .2s;
+  }
+  .refresh-btn:hover { border-color: var(--accent); }
+
+  /* ── Option cards grid ──────────────────────────────────────────────────── */
+  .options-grid {
+    display: grid;
+    grid-template-columns: repeat(auto-fill, minmax(280px, 1fr));
+    gap: 16px;
+    margin-bottom: 28px;
+  }
+  .option-card {
+    background: var(--surface); border: 1.5px solid var(--border);
+    border-radius: var(--radius); overflow: hidden;
+    transition: transform .15s, box-shadow .15s, border-color .15s;
+    cursor: default;
+  }
+  .option-card:hover { transform: translateY(-2px); box-shadow: var(--shadow); border-color: var(--accent); }
+
+  .option-badge {
+    width: 100%; padding: 6px 14px; font-size: 11px; font-weight: 700;
+    letter-spacing: .06em; text-transform: uppercase;
+    display: flex; align-items: center; gap: 6px;
+  }
+  .badge-1 { background: #1e1e3f; color: var(--accent-lt); }
+  .badge-2 { background: #0d2b1f; color: var(--green); }
+  .badge-3 { background: #2b2000; color: var(--amber); }
+  .badge-clean { background: #1f1020; color: #c084fc; }
+
+  .option-body { padding: 16px 18px 18px; }
+
+  .rep-row { display: flex; align-items: center; gap: 10px; margin-bottom: 14px; }
+  .rep-avatar {
+    width: 38px; height: 38px; border-radius: 50%;
+    display: flex; align-items: center; justify-content: center;
+    font-weight: 700; font-size: 15px; color: #fff; flex-shrink: 0;
+  }
+  .rep-name { font-weight: 700; font-size: 15px; }
+  .rep-priority { font-size: 11px; color: var(--muted); }
+
+  .time-display {
+    background: var(--surface2); border-radius: 8px; padding: 10px 14px;
+    margin-bottom: 14px; display: flex; align-items: center; gap: 10px;
+  }
+  .time-display .day { font-size: 18px; font-weight: 700; }
+  .time-display .divider { color: var(--muted); }
+  .time-display .clock { font-size: 18px; font-weight: 700; color: var(--accent-lt); }
+
+  .drive-row { display: flex; align-items: center; gap: 7px; font-size: 13px; margin-bottom: 10px; }
+  .drive-icon { color: var(--muted); }
+  .drive-time { font-weight: 600; }
+  .drive-time.ok    { color: var(--green); }
+  .drive-time.warn  { color: var(--amber); }
+  .drive-time.over  { color: var(--red); }
+  .drive-from { color: var(--muted); font-size: 12px; white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 180px; }
+
+  .prob-row { display: flex; align-items: center; gap: 8px; margin-top: 12px; }
+  .prob-label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .prob-bar-wrap { flex: 1; background: var(--surface2); border-radius: 4px; height: 6px; overflow: hidden; }
+  .prob-bar { height: 100%; border-radius: 4px; transition: width .6s; }
+  .prob-bar.high   { background: var(--green); }
+  .prob-bar.medium { background: var(--amber); }
+  .prob-bar.low    { background: var(--red); }
+  .prob-pct { font-size: 12px; font-weight: 700; min-width: 32px; text-align: right; }
+  .prob-pct.high   { color: var(--green); }
+  .prob-pct.medium { color: var(--amber); }
+  .prob-pct.low    { color: var(--red); }
+
+  /* book-btn removed — replaced by select-btn */
+
+  .clean-flag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; background: #2a1040; color: #c084fc;
+    border: 1px solid #6d28d9; border-radius: 6px; padding: 2px 8px; margin-top: 8px;
+  }
+  .post-drive-row {
+    display: flex; align-items: center; gap: 7px; font-size: 12px;
+    margin-top: 6px; padding-top: 6px; border-top: 1px solid var(--border);
+    color: var(--muted);
+  }
+  .post-drive-row .drive-time { font-size: 12px; }
+  .conflict-flag {
+    display: flex; align-items: center; gap: 5px;
+    font-size: 11px; background: rgba(239,68,68,.12); color: var(--red);
+    border: 1px solid rgba(239,68,68,.35); border-radius: 6px;
+    padding: 3px 9px; margin-top: 8px;
+  }
+  .ota-flag {
+    display: inline-flex; align-items: center; gap: 4px;
+    font-size: 11px; background: rgba(245,158,11,.1); color: var(--amber);
+    border: 1px solid rgba(245,158,11,.35); border-radius: 6px;
+    padding: 3px 9px; margin-top: 8px;
+  }
+
+  /* ── Section label ──────────────────────────────────────────────────────── */
+  .section-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--muted); margin-bottom: 12px;
+  }
+  .more-options-toggle {
+    display: flex; align-items: center; gap: 8px;
+    margin: 20px 0 12px; cursor: pointer; user-select: none;
+  }
+  .more-options-toggle .mot-label {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--accent-lt);
+  }
+  .more-options-toggle .mot-line {
+    flex: 1; height: 1px; background: var(--border);
+  }
+  .more-options-toggle .mot-chevron {
+    color: var(--accent-lt); font-size: 12px; transition: transform .2s;
+  }
+  .more-options-toggle.open .mot-chevron { transform: rotate(180deg); }
+  #extraOptionsGrid { display: none; }
+  #extraOptionsGrid.open { display: grid; }
+
+  /* ── Welcome state ──────────────────────────────────────────────────────── */
+  .welcome {
+    height: 100%; display: flex; align-items: center; justify-content: center;
+  }
+  .welcome-inner { text-align: center; max-width: 360px; }
+  .welcome-inner h2 { font-size: 20px; font-weight: 700; margin-bottom: 8px; }
+  .welcome-inner p { font-size: 14px; color: var(--muted); line-height: 1.6; }
+  .welcome-steps {
+    margin-top: 28px; text-align: left; display: flex; flex-direction: column; gap: 12px;
+  }
+  .step {
+    display: flex; align-items: flex-start; gap: 12px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 10px; padding: 12px 14px;
+  }
+  .step-num {
+    width: 24px; height: 24px; border-radius: 50%;
+    background: var(--accent); color: #fff; font-size: 12px; font-weight: 700;
+    display: flex; align-items: center; justify-content: center; flex-shrink: 0;
+  }
+  .step-text { font-size: 13px; color: var(--muted); }
+  .step-text strong { color: var(--text); }
+
+  /* ── Select button ──────────────────────────────────────────────────────── */
+  .select-btn {
+    width: 100%; margin-top: 14px; padding: 10px;
+    border-radius: 8px; border: 1px solid var(--accent);
+    cursor: pointer; font-size: 14px; font-weight: 600;
+    background: transparent; color: var(--accent-lt);
+    display: flex; align-items: center; justify-content: center; gap: 7px;
+    transition: background .2s, color .2s;
+  }
+  .select-btn:hover { background: var(--accent); color: #fff; }
+  .select-btn.copied { background: var(--green); border-color: var(--green); color: #fff; }
+
+  /* ── Toast ──────────────────────────────────────────────────────────────── */
+  .toast {
+    position: fixed; bottom: 24px; left: 50%; transform: translateX(-50%);
+    background: var(--surface); border: 1px solid var(--green);
+    color: var(--green); padding: 10px 22px; border-radius: 30px;
+    font-size: 14px; font-weight: 600; box-shadow: var(--shadow);
+    opacity: 0; transition: opacity .3s; pointer-events: none; z-index: 200;
+  }
+  .toast.show { opacity: 1; }
+
+  /* ── Scrollbars ─────────────────────────────────────────────────────────── */
+  ::-webkit-scrollbar { width: 6px; }
+  ::-webkit-scrollbar-track { background: transparent; }
+  ::-webkit-scrollbar-thumb { background: var(--border); border-radius: 3px; }
+
+  /* ── Header buttons ─────────────────────────────────────────────────────── */
+  .admin-btn {
+    margin-left: 10px; display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted); font-size: 12px;
+    cursor: pointer; transition: border-color .2s, color .2s;
+  }
+  .admin-btn:hover { border-color: var(--accent); color: var(--accent-lt); }
+  .scan-btn {
+    margin-left: 6px; display: flex; align-items: center; gap: 6px;
+    padding: 5px 12px; border-radius: 20px; border: 1px solid var(--border);
+    background: var(--surface2); color: var(--muted); font-size: 12px;
+    cursor: pointer; transition: border-color .2s, color .2s; position: relative;
+  }
+  .scan-btn:hover { border-color: var(--amber); color: var(--amber); }
+  .scan-btn.has-issues { border-color: var(--red); color: var(--red); }
+  .scan-badge {
+    position: absolute; top: -5px; right: -5px;
+    background: var(--red); color: #fff; font-size: 10px; font-weight: 700;
+    border-radius: 10px; padding: 1px 5px; min-width: 16px; text-align: center;
+    display: none;
+  }
+  .scan-badge.show { display: block; }
+
+  /* ── Conflict modal ──────────────────────────────────────────────────────── */
+  .conflict-modal { width: 600px; }
+  .issue-card {
+    border-radius: 10px; border: 1px solid var(--border);
+    padding: 14px 16px; margin-bottom: 10px;
+  }
+  .issue-card.critical { border-color: rgba(239,68,68,.5); background: rgba(239,68,68,.06); }
+  .issue-card.warning  { border-color: rgba(245,158,11,.4); background: rgba(245,158,11,.05); }
+  .issue-top { display: flex; align-items: center; gap: 10px; margin-bottom: 10px; }
+  .issue-badge {
+    font-size: 10px; font-weight: 700; text-transform: uppercase; letter-spacing: .06em;
+    padding: 2px 8px; border-radius: 5px; flex-shrink: 0;
+  }
+  .issue-badge.critical { background: rgba(239,68,68,.2); color: var(--red); }
+  .issue-badge.warning  { background: rgba(245,158,11,.2); color: var(--amber); }
+  .issue-rep { display: flex; align-items: center; gap: 7px; }
+  .issue-rep-name { font-weight: 600; font-size: 13px; }
+  .issue-day { margin-left: auto; font-size: 12px; color: var(--muted); }
+  .issue-flow {
+    display: flex; align-items: flex-start; gap: 8px;
+    font-size: 13px;
+  }
+  .issue-appt { flex: 1; }
+  .issue-time { font-weight: 700; font-size: 13px; color: var(--accent-lt); margin-bottom: 2px; }
+  .issue-addr { font-size: 12px; color: var(--muted); line-height: 1.4; }
+  .issue-arrow {
+    display: flex; flex-direction: column; align-items: center; gap: 2px;
+    padding-top: 2px; flex-shrink: 0; color: var(--muted);
+  }
+  .issue-drive {
+    font-size: 11px; font-weight: 700; white-space: nowrap; margin-top: 2px;
+  }
+  .issue-drive.critical { color: var(--red); }
+  .issue-drive.warning  { color: var(--amber); }
+  .issue-detail {
+    margin-top: 8px; font-size: 11px; color: var(--muted);
+    padding-top: 8px; border-top: 1px solid var(--border);
+  }
+  .issue-detail strong { color: var(--text); }
+
+  /* ── Optimizer modal ────────────────────────────────────────────────────── */
+  .optimizer-modal { width: 680px; }
+  .swap-card {
+    border-radius: 10px; border: 1px solid var(--border);
+    background: var(--surface2); padding: 14px 16px; margin-bottom: 10px;
+  }
+  .swap-header {
+    display: flex; align-items: center; justify-content: space-between;
+    margin-bottom: 12px;
+  }
+  .swap-day { font-weight: 600; font-size: 13px; }
+  .swap-save {
+    background: rgba(16,185,129,.15); color: var(--green);
+    font-size: 11px; font-weight: 700; padding: 3px 10px; border-radius: 20px;
+    border: 1px solid rgba(16,185,129,.3);
+  }
+  .swap-rep-block {
+    padding: 10px 0; border-top: 1px solid var(--border);
+  }
+  .swap-rep-hdr { display: flex; align-items: center; gap: 7px; margin-bottom: 8px; }
+  .swap-rep-name { font-weight: 600; font-size: 13px; flex: 1; }
+  .swap-rep-delta { font-size: 11px; font-weight: 700; }
+  .swap-rep-delta.save  { color: var(--green); }
+  .swap-rep-delta.cost  { color: var(--amber); }
+  .sched-row {
+    display: flex; align-items: center; flex-wrap: wrap; gap: 0;
+    font-size: 11px; margin-bottom: 4px; min-height: 22px;
+  }
+  .sched-lbl {
+    color: var(--muted); font-weight: 600; font-size: 10px;
+    text-transform: uppercase; letter-spacing: .04em;
+    width: 46px; flex-shrink: 0;
+  }
+  .sched-appt {
+    display: inline-flex; align-items: center; gap: 4px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 5px; padding: 2px 7px; white-space: nowrap;
+    max-width: 210px; overflow: hidden;
+  }
+  .sched-appt.incoming {
+    border-color: var(--green); background: rgba(16,185,129,.1);
+  }
+  .sched-appt.outgoing {
+    border-color: var(--amber); background: rgba(245,158,11,.1);
+    opacity: .75;
+  }
+  .sched-appt-time { font-weight: 700; color: var(--accent-lt); flex-shrink: 0; }
+  .sched-appt-addr { color: var(--muted); overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .sched-appt.incoming .sched-appt-addr { color: var(--green); }
+  .sched-appt.outgoing .sched-appt-addr { color: var(--amber); text-decoration: line-through; }
+  .sched-leg {
+    color: var(--muted); padding: 0 3px; font-size: 10px;
+    white-space: nowrap; flex-shrink: 0;
+  }
+  .sched-leg.changed { color: var(--green); font-weight: 700; }
+  .swap-description {
+    font-size: 12px; font-weight: 600; color: var(--fg);
+    padding: 7px 10px; background: var(--surface); border-radius: 6px;
+    border-left: 3px solid var(--accent-lt); margin-bottom: 10px;
+  }
+  .swap-type-badge {
+    font-size: 10px; font-weight: 700; padding: 2px 7px; border-radius: 10px;
+    text-transform: uppercase; letter-spacing: .05em;
+    background: rgba(99,102,241,.15); color: var(--accent-lt);
+    border: 1px solid rgba(99,102,241,.3);
+  }
+  .swap-type-badge.time-adjusted {
+    background: rgba(245,158,11,.15); color: var(--amber);
+    border-color: rgba(245,158,11,.3);
+  }
+  .swap-time-shift {
+    font-size: 11px; color: var(--amber); font-weight: 600;
+    margin-left: 4px;
+  }
+
+  /* ── Modal ──────────────────────────────────────────────────────────────── */
+  .modal-overlay {
+    display: none; position: fixed; inset: 0; background: rgba(0,0,0,.65);
+    z-index: 100; align-items: center; justify-content: center;
+  }
+  .modal-overlay.open { display: flex; }
+  .modal {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: var(--radius); width: 520px; max-height: 82vh;
+    display: flex; flex-direction: column; box-shadow: var(--shadow);
+  }
+  .modal-header {
+    display: flex; align-items: center; justify-content: space-between;
+    padding: 18px 20px 14px; border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .modal-header h3 { font-size: 16px; font-weight: 700; }
+  .modal-close {
+    background: none; border: none; color: var(--muted); font-size: 20px;
+    cursor: pointer; padding: 2px 7px; border-radius: 4px; line-height: 1;
+  }
+  .modal-close:hover { color: var(--text); background: var(--surface2); }
+  .modal-body { flex: 1; overflow-y: auto; padding: 6px 20px 16px; }
+  .modal-footer {
+    padding: 14px 20px; border-top: 1px solid var(--border);
+    display: flex; justify-content: flex-end; gap: 10px; flex-shrink: 0;
+  }
+  .modal-sub { font-size: 12px; color: var(--muted); padding: 10px 0 4px; }
+
+  /* ── Rep toggle rows ────────────────────────────────────────────────────── */
+  .rep-toggle-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 9px 0; border-bottom: 1px solid var(--border);
+  }
+  .rep-toggle-row:last-child { border-bottom: none; }
+  .rtog-name { flex: 1; font-size: 13px; font-weight: 500; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  .rtog-pct-wrap { display: flex; align-items: center; gap: 5px; flex-shrink: 0; }
+  .rtog-pct-wrap input[type=number] {
+    width: 52px; padding: 4px 6px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 12px; text-align: center; outline: none;
+  }
+  .rtog-pct-wrap input[type=number]:focus { border-color: var(--accent); }
+  .rtog-pct-wrap span { font-size: 11px; color: var(--muted); }
+  .toggle-switch { position: relative; width: 36px; height: 20px; flex-shrink: 0; }
+  .toggle-switch input { opacity: 0; width: 0; height: 0; position: absolute; }
+  .toggle-track {
+    position: absolute; inset: 0; background: var(--surface2);
+    border-radius: 20px; cursor: pointer; transition: background .2s;
+    border: 1px solid var(--border);
+  }
+  .toggle-switch input:checked + .toggle-track { background: var(--accent); border-color: var(--accent); }
+  .toggle-track::after {
+    content: ''; position: absolute; width: 14px; height: 14px;
+    background: #fff; border-radius: 50%; top: 2px; left: 2px; transition: left .2s;
+  }
+  .toggle-switch input:checked + .toggle-track::after { left: 18px; }
+
+  /* ── Modal buttons ──────────────────────────────────────────────────────── */
+  .save-btn {
+    padding: 9px 22px; background: var(--accent); border: none;
+    border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer; transition: opacity .2s;
+  }
+  .save-btn:hover { opacity: .85; }
+  .cancel-btn {
+    padding: 9px 16px; background: transparent; border: 1px solid var(--border);
+    border-radius: 8px; color: var(--muted); font-size: 14px; cursor: pointer;
+  }
+  .cancel-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ── Address prompt ─────────────────────────────────────────────────────── */
+  .address-prompt { max-width: 440px; margin: 56px auto 0; }
+  .address-prompt h2 { font-size: 22px; font-weight: 700; margin-bottom: 4px; }
+  .addr-warning {
+    display: flex; align-items: center; gap: 8px;
+    background: rgba(245,158,11,.1); border: 1px solid rgba(245,158,11,.3);
+    border-radius: 8px; padding: 10px 14px; color: var(--amber);
+    font-size: 13px; margin: 10px 0 20px;
+  }
+  .address-prompt label { display: block; font-size: 12px; color: var(--muted); margin-bottom: 7px; font-weight: 600; text-transform: uppercase; letter-spacing: .05em; }
+  .addr-input-row { display: flex; gap: 8px; }
+  .addr-input-row input {
+    flex: 1; padding: 10px 14px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 8px;
+    color: var(--text); font-size: 14px; outline: none;
+  }
+  .addr-input-row input:focus { border-color: var(--accent); }
+  .find-btn {
+    padding: 10px 18px; background: var(--accent); border: none;
+    border-radius: 8px; color: #fff; font-size: 14px; font-weight: 600;
+    cursor: pointer;
+  }
+  .find-btn:hover { opacity: .85; }
+  .skip-link {
+    margin-top: 11px; font-size: 12px; color: var(--muted);
+    cursor: pointer; text-decoration: underline; display: inline-block;
+  }
+  .skip-link:hover { color: var(--text); }
+
+  /* ── Manual entry ───────────────────────────────────────────────────────── */
+  .manual-entry-btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; padding: 8px; margin-bottom: 14px;
+    background: transparent; border: 1px dashed var(--border);
+    border-radius: var(--radius); color: var(--muted);
+    font-size: 13px; cursor: pointer; transition: border-color .2s, color .2s;
+  }
+  .manual-entry-btn:hover { border-color: var(--accent); color: var(--accent-lt); }
+  .manual-form {
+    background: var(--surface2); border: 1px solid var(--border);
+    border-radius: var(--radius); padding: 14px; margin-bottom: 14px;
+  }
+  .manual-form-title {
+    font-size: 12px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--accent-lt); margin-bottom: 12px;
+  }
+  .manual-row { display: flex; gap: 8px; margin-bottom: 8px; }
+  .manual-row input, .manual-form > input {
+    flex: 1; width: 100%; padding: 8px 10px;
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; color: var(--text); font-size: 13px; outline: none;
+  }
+  .manual-row input:focus, .manual-form > input:focus { border-color: var(--accent); }
+  .manual-row input::placeholder, .manual-form > input::placeholder { color: var(--muted); }
+  .manual-addr-label {
+    font-size: 11px; color: var(--muted); margin: 8px 0 4px; font-weight: 600;
+    text-transform: uppercase; letter-spacing: .05em;
+  }
+  .manual-actions { display: flex; gap: 8px; margin-top: 10px; }
+  .manual-go-btn {
+    flex: 1; padding: 9px; background: var(--accent); border: none;
+    border-radius: 8px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .manual-go-btn:hover { opacity: .85; }
+  .manual-cancel-btn {
+    padding: 9px 14px; background: transparent; border: 1px solid var(--border);
+    border-radius: 8px; color: var(--muted); font-size: 13px; cursor: pointer;
+  }
+  .manual-cancel-btn:hover { border-color: var(--accent); color: var(--text); }
+
+  /* ── Rep class grouping ─────────────────────────────────────────────────── */
+  .rep-class-header {
+    font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .09em; color: var(--accent-lt);
+    padding: 14px 0 6px; border-bottom: 1px solid var(--border);
+    margin-bottom: 2px;
+  }
+  .rep-class-header:first-child { padding-top: 6px; }
+  .rtog-class-input {
+    width: 108px; padding: 4px 7px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 12px; outline: none; flex-shrink: 0;
+  }
+  .rtog-class-input:focus { border-color: var(--accent); }
+  .rtog-home-wrap {
+    display: flex; align-items: center; gap: 6px;
+    padding: 3px 8px 8px 46px;
+  }
+  .rtog-home-wrap label { font-size: 11px; color: var(--text-muted); white-space: nowrap; }
+  .rtog-home-input {
+    flex: 1; padding: 4px 8px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 12px; outline: none;
+  }
+  .rtog-home-input:focus { border-color: var(--accent); }
+  .rep-toggle-row { flex-wrap: wrap; }
+
+  /* ── Inline address editor ──────────────────────────────────────────────── */
+  .edit-addr-link {
+    margin-left: 8px; font-size: 11px; color: var(--muted);
+    cursor: pointer; opacity: .7; white-space: nowrap;
+  }
+  .edit-addr-link:hover { opacity: 1; color: var(--accent-lt); }
+
+  /* ── Address autocomplete dropdown ─────────────────────────────────────── */
+  .addr-suggestions {
+    background: var(--surface); border: 1px solid var(--border);
+    border-radius: 8px; box-shadow: 0 8px 28px rgba(0,0,0,.5);
+    overflow: hidden; max-height: 220px; overflow-y: auto;
+  }
+  .addr-suggestion-item {
+    padding: 10px 14px; font-size: 13px; color: var(--text);
+    cursor: pointer; border-bottom: 1px solid var(--border);
+    line-height: 1.4;
+  }
+  .addr-suggestion-item:last-child { border-bottom: none; }
+  .addr-suggestion-item:hover { background: var(--surface2); color: var(--accent-lt); }
+  .city-rate-badge {
+    font-size: 12px; padding: 5px 10px; border-radius: 6px; margin-top: 6px;
+    display: inline-block; font-weight: 500;
+  }
+  .city-rate-badge.loading { color: var(--muted); background: var(--surface2); }
+  .city-rate-badge.no-data { color: var(--muted); background: var(--surface2); }
+  .city-rate-badge.good    { color: #fff; background: var(--green); }
+  .city-rate-badge.mid     { color: #000; background: var(--amber); }
+  .city-rate-badge.low     { color: #fff; background: var(--red); }
+
+  /* ── Admin modal tabs ───────────────────────────────────────────────────── */
+  .modal-tabs {
+    display: flex; gap: 4px; padding: 0 20px 0;
+    border-bottom: 1px solid var(--border); flex-shrink: 0;
+  }
+  .modal-tab {
+    padding: 10px 16px; font-size: 13px; font-weight: 600;
+    color: var(--muted); background: none; border: none;
+    border-bottom: 2px solid transparent; cursor: pointer;
+    margin-bottom: -1px; transition: color .15s, border-color .15s;
+  }
+  .modal-tab.active { color: var(--accent-lt); border-bottom-color: var(--accent); }
+  .modal-tab:hover:not(.active) { color: var(--text); }
+  .tab-pane { display: none; }
+  .tab-pane.active { display: block; }
+
+  /* ── Class settings rows ────────────────────────────────────────────────── */
+  .class-row {
+    display: flex; align-items: center; gap: 8px;
+    padding: 10px 0 6px;
+  }
+  .class-shop-row {
+    display: flex; align-items: center; gap: 10px;
+    padding: 2px 0 10px; border-bottom: 1px solid var(--border);
+  }
+  .class-shop-row:last-child { border-bottom: none; }
+  .class-shop-label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .class-shop-input {
+    flex: 1; padding: 5px 8px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 12px; outline: none; min-width: 0;
+  }
+  .class-shop-input:focus { border-color: var(--accent); }
+  .class-shop-input::placeholder { color: var(--muted); font-style: italic; }
+  .class-name-input {
+    flex: 1; padding: 5px 8px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 13px; outline: none; min-width: 0;
+  }
+  .class-name-input:focus { border-color: var(--accent); }
+  .class-num-wrap {
+    display: flex; align-items: center; gap: 4px; flex-shrink: 0;
+  }
+  .class-num-wrap label { font-size: 11px; color: var(--muted); white-space: nowrap; }
+  .class-num-input {
+    width: 54px; padding: 5px 6px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 12px; text-align: center; outline: none;
+  }
+  .class-num-input:focus { border-color: var(--accent); }
+  .class-del-btn {
+    background: none; border: 1px solid transparent; border-radius: 6px;
+    color: var(--muted); font-size: 16px; cursor: pointer; padding: 3px 6px;
+    line-height: 1; flex-shrink: 0; transition: color .15s, border-color .15s;
+  }
+  .class-del-btn:hover { color: var(--red); border-color: var(--red); }
+  .class-header-row {
+    display: flex; gap: 8px; padding-bottom: 6px;
+    border-bottom: 1px solid var(--border); margin-bottom: 2px;
+  }
+  .class-header-row span { font-size: 10px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .07em; color: var(--muted); }
+  .class-header-row .ch-name { flex: 1; }
+  .class-header-row .ch-days { width: 54px; text-align: center; }
+  .class-header-row .ch-max  { width: 54px; text-align: center; }
+  .class-header-row .ch-buf  { width: 54px; text-align: center; }
+  .class-header-row .ch-gap  { width: 54px; text-align: center; }
+  .class-header-row .ch-del  { width: 30px; }
+  .add-class-btn {
+    display: flex; align-items: center; justify-content: center; gap: 6px;
+    width: 100%; margin-top: 12px; padding: 8px;
+    background: transparent; border: 1px dashed var(--border);
+    border-radius: var(--radius); color: var(--muted);
+    font-size: 13px; cursor: pointer; transition: border-color .2s, color .2s;
+  }
+  .add-class-btn:hover { border-color: var(--accent); color: var(--accent-lt); }
+
+  /* ── Report modal ─────────────────────────────────────────────────────────── */
+  .report-modal { width: 820px; }
+  .report-date-row {
+    display: flex; align-items: center; gap: 10px; padding: 12px 0 6px; flex-wrap: wrap;
+  }
+  .report-date-row label { font-size: 12px; color: var(--muted); white-space: nowrap; }
+  .report-date-row input[type=date] {
+    padding: 6px 10px; background: var(--surface2);
+    border: 1px solid var(--border); border-radius: 6px;
+    color: var(--text); font-size: 13px; outline: none;
+    color-scheme: dark;
+  }
+  .report-date-row input[type=date]:focus { border-color: var(--accent); }
+  .report-load-btn {
+    padding: 7px 16px; background: var(--accent); border: none;
+    border-radius: 8px; color: #fff; font-size: 13px; font-weight: 600; cursor: pointer;
+  }
+  .report-load-btn:hover { opacity: .85; }
+  .report-summary {
+    display: flex; gap: 24px; padding: 14px 0 10px; align-items: center;
+    border-bottom: 1px solid var(--border); margin-bottom: 4px;
+  }
+  .report-stat { display: flex; flex-direction: column; gap: 3px; }
+  .report-stat .rs-val { font-size: 22px; font-weight: 700; }
+  .report-stat .rs-lbl { font-size: 11px; color: var(--muted); text-transform: uppercase; letter-spacing: .06em; }
+  .report-divider { width: 1px; height: 38px; background: var(--border); }
+  .report-section-title {
+    font-size: 11px; font-weight: 700; text-transform: uppercase;
+    letter-spacing: .08em; color: var(--muted);
+    margin: 18px 0 8px; padding-top: 14px; border-top: 1px solid var(--border);
+  }
+  .report-section-title:first-child { border-top: none; padding-top: 0; }
+  .report-table { width: 100%; border-collapse: collapse; }
+  .report-table td { padding: 5px 6px; font-size: 13px; vertical-align: middle; }
+  .report-table tr:nth-child(even) td { background: rgba(255,255,255,.02); }
+  .report-label { width: 120px; color: var(--text); white-space: nowrap; overflow: hidden; text-overflow: ellipsis; max-width: 140px; }
+  .report-bar-wrap { padding: 0 8px; }
+  .report-bar-bg { background: var(--surface2); border-radius: 4px; height: 8px; overflow: hidden; }
+  .report-bar-fill { height: 100%; border-radius: 4px; transition: width .5s ease; min-width: 2px; }
+  .report-bar-fill.above { background: var(--green); }
+  .report-bar-fill.at    { background: var(--amber); }
+  .report-bar-fill.below { background: var(--red); }
+  .report-count { width: 72px; text-align: right; color: var(--muted); font-size: 12px; white-space: nowrap; }
+  .report-rate { width: 50px; text-align: right; font-weight: 700; font-size: 13px; white-space: nowrap; }
+  .report-rate.above { color: var(--green); }
+  .report-rate.at    { color: var(--amber); }
+  .report-rate.below { color: var(--red); }
+  .report-note { font-size: 11px; color: var(--muted); margin-bottom: 2px; }
+</style>
+</head>
+<body>
+<div class="app">
+
+  <!-- Header -->
+  <header>
+    <div class="logo">
+      <svg width="22" height="22" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round" stroke-linejoin="round">
+        <rect x="3" y="4" width="18" height="18" rx="2"/><line x1="16" y1="2" x2="16" y2="6"/><line x1="8" y1="2" x2="8" y2="6"/><line x1="3" y1="10" x2="21" y2="10"/>
+        <circle cx="8" cy="14" r="1.2" fill="currentColor"/><circle cx="12" cy="14" r="1.2" fill="currentColor"/><circle cx="16" cy="14" r="1.2" fill="currentColor"/>
+        <circle cx="8" cy="18" r="1.2" fill="currentColor"/><circle cx="12" cy="18" r="1.2" fill="currentColor"/>
+      </svg>
+      Call Center Scheduler
+    </div>
+    <div class="status-pill" id="statusPill">
+      <div class="dot demo" id="statusDot"></div>
+      <span id="statusText">Connecting…</span>
+    </div>
+    <button class="scan-btn" id="scanBtn" onclick="openConflicts()">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <path d="M10.29 3.86L1.82 18a2 2 0 0 0 1.71 3h16.94a2 2 0 0 0 1.71-3L13.71 3.86a2 2 0 0 0-3.42 0z"/>
+        <line x1="12" y1="9" x2="12" y2="13"/><line x1="12" y1="17" x2="12.01" y2="17"/>
+      </svg>
+      Scan Schedule
+      <span class="scan-badge" id="scanBadge"></span>
+    </button>
+    <button class="admin-btn" id="optimizerBtn" onclick="openOptimizer()" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <polyline points="23 6 13.5 15.5 8.5 10.5 1 18"/><polyline points="17 6 23 6 23 12"/>
+      </svg>
+      Optimization Scan
+    </button>
+    <button class="admin-btn" id="reportsBtn" onclick="openReports()" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <line x1="18" y1="20" x2="18" y2="10"/><line x1="12" y1="20" x2="12" y2="4"/><line x1="6" y1="20" x2="6" y2="14"/>
+      </svg>
+      Reports
+    </button>
+    <button class="admin-btn" id="settingsBtn" onclick="openAdmin()" style="display:none">
+      <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+        <circle cx="12" cy="12" r="3"/><path d="M19.4 15a1.65 1.65 0 0 0 .33 1.82l.06.06a2 2 0 0 1-2.83 2.83l-.06-.06a1.65 1.65 0 0 0-1.82-.33 1.65 1.65 0 0 0-1 1.51V21a2 2 0 0 1-4 0v-.09A1.65 1.65 0 0 0 9 19.4a1.65 1.65 0 0 0-1.82.33l-.06-.06a2 2 0 0 1-2.83-2.83l.06-.06A1.65 1.65 0 0 0 4.68 15a1.65 1.65 0 0 0-1.51-1H3a2 2 0 0 1 0-4h.09A1.65 1.65 0 0 0 4.6 9a1.65 1.65 0 0 0-.33-1.82l-.06-.06a2 2 0 0 1 2.83-2.83l.06.06A1.65 1.65 0 0 0 9 4.68a1.65 1.65 0 0 0 1-1.51V3a2 2 0 0 1 4 0v.09a1.65 1.65 0 0 0 1 1.51 1.65 1.65 0 0 0 1.82-.33l.06-.06a2 2 0 0 1 2.83 2.83l-.06.06A1.65 1.65 0 0 0 19.4 9a1.65 1.65 0 0 0 1.51 1H21a2 2 0 0 1 0 4h-.09a1.65 1.65 0 0 0-1.51 1z"/>
+      </svg>
+      Settings
+    </button>
+    <span id="headerUser" style="display:none;font-size:12px;color:var(--muted)"></span>
+    <button id="logoutBtn" onclick="doLogout()" style="display:none;background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:12px;padding:4px 10px;cursor:pointer">Sign out</button>
+  </header>
+
+  <!-- Login Modal -->
+  <div class="modal-overlay" id="loginModal" style="display:flex">
+    <div class="modal" style="width:360px">
+      <div class="modal-header" style="border-bottom:none;padding-bottom:0">
+        <h3>Sign In</h3>
+      </div>
+      <div class="modal-body" style="padding-top:12px">
+        <div id="loginError" style="display:none;color:var(--red);font-size:13px;margin-bottom:12px"></div>
+        <div style="display:flex;flex-direction:column;gap:10px">
+          <input id="loginUsername" type="text" placeholder="Username" autocomplete="username"
+                 style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"
+                 onkeydown="if(event.key==='Enter')doLogin()" />
+          <input id="loginPassword" type="password" placeholder="Password" autocomplete="current-password"
+                 style="padding:10px 12px;background:var(--surface2);border:1px solid var(--border);border-radius:8px;color:var(--text);font-size:14px;outline:none"
+                 onkeydown="if(event.key==='Enter')doLogin()" />
+          <button onclick="doLogin()" style="padding:10px;background:var(--accent);border:none;border-radius:8px;color:#fff;font-size:14px;font-weight:600;cursor:pointer;margin-top:4px">Sign In</button>
+        </div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Admin Modal -->
+  <div class="modal-overlay" id="adminModal">
+    <div class="modal" style="width:660px">
+      <div class="modal-header">
+        <h3>Settings</h3>
+        <button class="modal-close" onclick="closeAdmin()">✕</button>
+      </div>
+      <div class="modal-tabs">
+        <button class="modal-tab active" id="tab-reps" onclick="switchTab('reps')">Reps</button>
+        <button class="modal-tab" id="tab-classes" onclick="switchTab('classes')">Classes &amp; Rules</button>
+        <button class="modal-tab" id="tab-users" onclick="switchTab('users')">Users</button>
+      </div>
+      <div class="modal-body">
+        <!-- Reps tab -->
+        <div class="tab-pane active" id="pane-reps">
+          <p class="modal-sub">Toggle reps on/off and set booking priority (100% = always offered first).</p>
+          <div id="repToggleList"><div class="empty"><div class="spinner"></div><br>Loading…</div></div>
+        </div>
+        <!-- Classes tab -->
+        <div class="tab-pane" id="pane-classes">
+          <p class="modal-sub">Configure scheduling rules per class. Same-day buffer: slot only allowed if drive to/from adjacent appointment is within this many minutes.</p>
+          <div id="classSettingsList"><div class="empty"><div class="spinner"></div><br>Loading…</div></div>
+          <button class="add-class-btn" onclick="addClassRow()">
+            <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+            Add Class
+          </button>
+        </div>
+        <!-- Users tab -->
+        <div class="tab-pane" id="pane-users">
+          <p class="modal-sub">Manage who can access the app. Admins can edit settings; regular users can only search and view options.</p>
+          <div id="usersList"><div class="empty"><div class="spinner"></div><br>Loading…</div></div>
+          <div style="margin-top:16px;padding-top:14px;border-top:1px solid var(--border)">
+            <p class="modal-sub" style="margin-bottom:10px">Change your own password:</p>
+            <div style="display:flex;gap:8px;flex-wrap:wrap">
+              <input id="cpCurrent" type="password" placeholder="Current password" style="flex:1;min-width:120px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;outline:none" />
+              <input id="cpNew"     type="password" placeholder="New password"     style="flex:1;min-width:120px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;outline:none" />
+              <button onclick="changeOwnPassword()" style="padding:7px 14px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Change</button>
+            </div>
+          </div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="cancel-btn" onclick="closeAdmin()">Cancel</button>
+        <button class="save-btn" id="saveBtn" onclick="saveActive()">Save</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Conflict Scan Modal -->
+  <div class="modal-overlay" id="conflictModal">
+    <div class="modal conflict-modal">
+      <div class="modal-header">
+        <h3>Schedule Conflict Scan</h3>
+        <button class="modal-close" onclick="closeConflicts()">✕</button>
+      </div>
+      <div class="modal-body" id="conflictBody">
+        <div class="empty"><div class="spinner"></div><br>Scanning appointments…</div>
+      </div>
+      <div class="modal-footer">
+        <button class="cancel-btn" onclick="closeConflicts()">Close</button>
+        <button class="save-btn" onclick="runConflictScan()" style="background:var(--amber);border-color:var(--amber)">Re-scan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Optimizer Modal -->
+  <div class="modal-overlay" id="optimizerModal">
+    <div class="modal optimizer-modal">
+      <div class="modal-header">
+        <h3>Optimization Scan</h3>
+        <button class="modal-close" onclick="closeOptimizer()">✕</button>
+      </div>
+      <div class="modal-body" id="optimizerBody">
+        <div class="empty"><div class="spinner"></div><br>Analyzing schedules…</div>
+      </div>
+      <div class="modal-footer">
+        <button class="cancel-btn" onclick="closeOptimizer()">Close</button>
+        <button class="save-btn" onclick="runOptimizer()" style="background:var(--green);border-color:var(--green)">Re-scan</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Report Modal -->
+  <div class="modal-overlay" id="reportModal">
+    <div class="modal report-modal">
+      <div class="modal-header">
+        <h3>Close Rate Report</h3>
+        <button class="modal-close" onclick="closeReports()">✕</button>
+      </div>
+      <div class="modal-body">
+        <div class="report-date-row">
+          <label>From</label>
+          <input type="date" id="reportStart" />
+          <label>to</label>
+          <input type="date" id="reportEnd" />
+          <button class="report-load-btn" onclick="loadReport()">Load</button>
+          <button class="report-load-btn" style="background:var(--muted);margin-left:6px" onclick="setReportRange('year')">This Year</button>
+          <button class="report-load-btn" style="background:var(--muted);margin-left:2px" onclick="setReportRange(6)">6 Mo</button>
+          <button class="report-load-btn" style="background:var(--muted);margin-left:2px" onclick="setReportRange(12)">12 Mo</button>
+        </div>
+        <div id="reportContent">
+          <div class="empty"><div class="spinner"></div><br>Loading…</div>
+        </div>
+      </div>
+      <div class="modal-footer">
+        <button class="cancel-btn" onclick="exportReport()" id="exportReportBtn" style="display:none;background:var(--accent);color:#fff;border-color:var(--accent)">Export CSV</button>
+        <button class="cancel-btn" onclick="closeReports()">Close</button>
+      </div>
+    </div>
+  </div>
+
+  <!-- Main -->
+  <main>
+
+    <!-- Left panel: search + contacts -->
+    <div class="panel left">
+      <div class="search-wrap">
+        <svg class="search-icon" width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <circle cx="11" cy="11" r="8"/><line x1="21" y1="21" x2="16.65" y2="16.65"/>
+        </svg>
+        <input type="text" id="searchInput" placeholder="Search by name, phone, or address…" autocomplete="off" />
+      </div>
+      <button class="manual-entry-btn" onclick="toggleManualForm()">
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><line x1="12" y1="5" x2="12" y2="19"/><line x1="5" y1="12" x2="19" y2="12"/></svg>
+        Manual Entry
+      </button>
+
+      <div class="manual-form" id="manualForm" style="display:none">
+        <div class="manual-form-title">Manual Lead Entry</div>
+        <div class="manual-row">
+          <input type="text" id="mFirst" placeholder="First name" />
+          <input type="text" id="mLast"  placeholder="Last name" />
+        </div>
+        <input type="text" id="mPhone" placeholder="Phone (optional)" style="width:100%;margin-bottom:8px" />
+        <div class="manual-addr-label">Address *</div>
+        <input type="text" id="mAddr" placeholder="123 Main St, City, ST 12345"
+               onkeydown="if(event.key==='Enter') submitManualEntry()" />
+        <div class="manual-actions">
+          <button class="manual-go-btn" onclick="submitManualEntry()">Find Slots</button>
+          <button class="manual-cancel-btn" onclick="toggleManualForm()">Cancel</button>
+        </div>
+      </div>
+
+      <div id="contactsArea">
+        <div class="empty">
+          <div class="icon">🔍</div>
+          Start typing to search customers
+        </div>
+      </div>
+    </div>
+
+    <!-- Right panel: schedule options -->
+    <div class="panel right" id="rightPanel">
+      <div class="welcome">
+        <div class="welcome-inner">
+          <h2>Ready to Schedule</h2>
+          <p>Search and select a customer on the left to see the best available appointment options across your sales team.</p>
+          <div class="welcome-steps">
+            <div class="step">
+              <div class="step-num">1</div>
+              <div class="step-text"><strong>Search</strong> the customer by name, phone, or address</div>
+            </div>
+            <div class="step">
+              <div class="step-num">2</div>
+              <div class="step-text"><strong>Select</strong> their record to load scheduling options</div>
+            </div>
+            <div class="step">
+              <div class="step-num">3</div>
+              <div class="step-text"><strong>Review</strong> 3 ranked options with drive times & area probability, then book</div>
+            </div>
+          </div>
+        </div>
+      </div>
+    </div>
+
+  </main>
+</div>
+
+<!-- Toast -->
+<div class="toast" id="toast">✓ Appointment booked!</div>
+
+<script>
+// ── State ──────────────────────────────────────────────────────────────────
+const API = '';  // same origin; change to 'http://localhost:8080' if needed
+let searchTimer = null;
+let currentCustomer = null;
+let _authToken = sessionStorage.getItem('authToken') || '';
+let _authRole  = sessionStorage.getItem('authRole')  || '';
+let _authUser  = sessionStorage.getItem('authUser')  || '';
+
+// ── Auth fetch wrapper ──────────────────────────────────────────────────────
+async function apiFetch(url, opts = {}) {
+  opts.headers = opts.headers || {};
+  if (_authToken) opts.headers['X-Auth-Token'] = _authToken;
+  const res = await fetch(url, opts);
+  if (res.status === 401) {
+    showLogin();
+    throw new Error('Unauthorized');
+  }
+  return res;
+}
+
+// ── Login / logout ──────────────────────────────────────────────────────────
+function showLogin() {
+  _authToken = _authRole = _authUser = '';
+  sessionStorage.removeItem('authToken');
+  sessionStorage.removeItem('authRole');
+  sessionStorage.removeItem('authUser');
+  document.getElementById('loginModal').style.display = 'flex';
+  document.getElementById('loginError').style.display = 'none';
+  document.getElementById('loginUsername').value = '';
+  document.getElementById('loginPassword').value = '';
+  setTimeout(() => document.getElementById('loginUsername').focus(), 50);
+}
+
+function hideLogin(username, role, token) {
+  _authToken = token; _authRole = role; _authUser = username;
+  sessionStorage.setItem('authToken', token);
+  sessionStorage.setItem('authRole',  role);
+  sessionStorage.setItem('authUser',  username);
+  document.getElementById('loginModal').style.display = 'none';
+  // Show/hide header elements based on role
+  document.getElementById('settingsBtn').style.display   = role === 'admin' ? '' : 'none';
+  document.getElementById('reportsBtn').style.display    = role === 'admin' ? '' : 'none';
+  document.getElementById('optimizerBtn').style.display  = role === 'admin' ? '' : 'none';
+  document.getElementById('scanBtn').style.display       = '';
+  document.getElementById('logoutBtn').style.display     = '';
+  document.getElementById('headerUser').style.display    = '';
+  document.getElementById('headerUser').textContent      = username;
+}
+
+async function doLogin() {
+  const username = document.getElementById('loginUsername').value.trim();
+  const password = document.getElementById('loginPassword').value;
+  const errEl    = document.getElementById('loginError');
+  errEl.style.display = 'none';
+  try {
+    const res  = await fetch(`${API}/api/login`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({username, password}),
+    });
+    const data = await res.json();
+    if (!res.ok) { errEl.textContent = data.error || 'Login failed'; errEl.style.display = ''; return; }
+    hideLogin(data.username, data.role, data.token);
+    init();
+  } catch {
+    errEl.textContent = 'Server unreachable'; errEl.style.display = '';
+  }
+}
+
+async function doLogout() {
+  try { await apiFetch(`${API}/api/logout`, {method:'POST'}); } catch {}
+  showLogin();
+  document.getElementById('settingsBtn').style.display   = 'none';
+  document.getElementById('reportsBtn').style.display    = 'none';
+  document.getElementById('optimizerBtn').style.display  = 'none';
+  document.getElementById('scanBtn').style.display       = 'none';
+  document.getElementById('logoutBtn').style.display     = 'none';
+  document.getElementById('headerUser').style.display    = 'none';
+  document.getElementById('rightPanel').innerHTML      = '';
+  document.getElementById('contactsArea').innerHTML    = `<div class="empty"><div class="icon">🔍</div>Start typing to search customers</div>`;
+  document.getElementById('searchInput').value         = '';
+}
+
+// ── Startup ────────────────────────────────────────────────────────────────
+// Ping server every 30s to keep Cloudflare tunnel connection alive
+setInterval(() => { fetch(`${API}/api/status`).catch(() => {}); }, 30000);
+
+async function init() {
+  // Check if stored token is still valid
+  if (_authToken) {
+    try {
+      const res = await fetch(`${API}/api/me`, {headers: {'X-Auth-Token': _authToken}});
+      if (res.ok) {
+        const me = await res.json();
+        hideLogin(me.username, me.role, _authToken);
+      } else {
+        showLogin(); return;
+      }
+    } catch { showLogin(); return; }
+  } else {
+    showLogin(); return;
+  }
+
+  try {
+    const res = await apiFetch(`${API}/api/status`);
+    const s = await res.json();
+    const dot  = document.getElementById('statusDot');
+    const txt  = document.getElementById('statusText');
+    if (s.demoMode) {
+      dot.className = 'dot demo';
+      txt.textContent = 'Demo Mode — mock data';
+    } else {
+      dot.className = 'dot';
+      txt.textContent = `Live — BP ${s.builderPrimeConnected ? '✓' : '✗'}  Maps ${s.googleMapsConnected ? '✓' : '✗'}`;
+    }
+  } catch {
+    document.getElementById('statusText').textContent = 'Server offline';
+  }
+}
+
+// ── Search ─────────────────────────────────────────────────────────────────
+document.getElementById('searchInput').addEventListener('input', e => {
+  clearTimeout(searchTimer);
+  const q = e.target.value.trim();
+  if (q.length < 2) {
+    document.getElementById('contactsArea').innerHTML = `
+      <div class="empty"><div class="icon">🔍</div>Start typing to search customers</div>`;
+    return;
+  }
+  document.getElementById('contactsArea').innerHTML = `
+    <div class="empty"><div class="spinner"></div><br>Searching…</div>`;
+  searchTimer = setTimeout(() => searchContacts(q), 280);
+});
+
+async function searchContacts(q) {
+  try {
+    const res = await apiFetch(`${API}/api/contacts/search?q=${encodeURIComponent(q)}`);
+    const data = await res.json();
+    renderContacts(data.contacts || []);
+  } catch {
+    document.getElementById('contactsArea').innerHTML = `
+      <div class="empty">⚠ Could not connect to server</div>`;
+  }
+}
+
+function renderContacts(contacts) {
+  if (!contacts.length) {
+    document.getElementById('contactsArea').innerHTML = `
+      <div class="empty"><div class="icon">😶</div>No customers found</div>`;
+    return;
+  }
+  document.getElementById('contactsArea').innerHTML = `
+    <div class="contacts-list">
+      ${contacts.map(c => `
+        <div class="contact-card ${currentCustomer?.id === c.id ? 'active' : ''}"
+             onclick='selectContact(${JSON.stringify(c)})'>
+          <div class="contact-name">${c.firstName} ${c.lastName}</div>
+          <div class="contact-meta">${c.phone}${c.email ? ' · ' + c.email : ''}</div>
+          <div class="contact-addr">${c.address || '—'}</div>
+        </div>`).join('')}
+    </div>`;
+}
+
+// ── Select contact → load options ──────────────────────────────────────────
+function isAddressIncomplete(addr) {
+  if (!addr || !addr.trim()) return true;
+  if (/^\d{5}(-\d{4})?$/.test(addr.trim())) return true; // zip-only
+  return false;
+}
+
+function selectContact(contact) {
+  currentCustomer = contact;
+  document.querySelectorAll('.contact-card').forEach(el => el.classList.remove('active'));
+  event.currentTarget.classList.add('active');
+
+  if (isAddressIncomplete(contact.address)) {
+    renderAddressPrompt(contact);
+  } else {
+    loadScheduleOptions(contact);
+  }
+}
+
+function renderAddressPrompt(contact) {
+  document.getElementById('rightPanel').innerHTML = `
+    <div class="address-prompt">
+      <h2>${contact.firstName} ${contact.lastName}</h2>
+      <p class="contact-meta">${contact.phone || ''}${contact.email ? ' · '+contact.email : ''}</p>
+      <div class="addr-warning">⚠ No address on file — enter one to find nearby slots.</div>
+      <label>Customer address</label>
+      <div class="addr-input-row">
+        <input type="text" id="manualAddrInput"
+               placeholder="123 Main St, City, ST 12345"
+               onkeydown="if(event.key==='Enter') useManualAddress()" />
+        <button class="find-btn" onclick="useManualAddress()">Find Slots</button>
+      </div>
+      <span class="skip-link" onclick="loadScheduleOptions(currentCustomer)">Skip — use approximate location</span>
+    </div>`;
+  setTimeout(() => {
+    const el = document.getElementById('manualAddrInput');
+    setupAddrAutocomplete(el);
+    el?.focus();
+  }, 50);
+}
+
+function useManualAddress() {
+  const el   = document.getElementById('manualAddrInput');
+  const addr = (el?.value || '').trim();
+  if (!addr) return;
+  currentCustomer = { ...currentCustomer, address: addr, lat: el?._lat || null, lng: el?._lng || null };
+  loadScheduleOptions(currentCustomer);
+}
+
+// ── Address autocomplete ───────────────────────────────────────────────────
+function setupAddrAutocomplete(inputEl, onPick) {
+  if (!inputEl || inputEl._acSetup) return;
+  inputEl._acSetup = true;
+
+  const drop = document.createElement('div');
+  drop.className = 'addr-suggestions';
+  drop.style.cssText = 'display:none; position:fixed; z-index:9999;';
+  document.body.appendChild(drop);
+
+  function positionDrop() {
+    const r = inputEl.getBoundingClientRect();
+    drop.style.left  = r.left + 'px';
+    drop.style.top   = (r.bottom + 4) + 'px';
+    drop.style.width = r.width + 'px';
+  }
+
+  let _acTimer = null;
+  inputEl.addEventListener('input', () => {
+    inputEl._lat = null;
+    inputEl._lng = null;
+    clearTimeout(_acTimer);
+    const q = inputEl.value.trim();
+    if (q.length < 3) { drop.style.display = 'none'; return; }
+    _acTimer = setTimeout(async () => {
+      try {
+        const res  = await apiFetch(`${API}/api/autocomplete?q=${encodeURIComponent(q)}`);
+        const data = await res.json();
+        const sugs = data.suggestions || [];
+        if (!sugs.length) { drop.style.display = 'none'; return; }
+        drop.innerHTML = sugs.map(s =>
+          `<div class="addr-suggestion-item" data-place="${s.placeId}">${s.description}</div>`
+        ).join('');
+        positionDrop();
+        drop.style.display = 'block';
+        drop.querySelectorAll('.addr-suggestion-item').forEach(item => {
+          item.addEventListener('mousedown', async e => {
+            e.preventDefault();
+            try {
+              const r2 = await apiFetch(`${API}/api/place-details?placeId=${encodeURIComponent(item.dataset.place)}`);
+              const d  = await r2.json();
+              inputEl.value  = d.address || inputEl.value;
+              inputEl._lat   = d.lat   || null;
+              inputEl._lng   = d.lng   || null;
+              inputEl._city  = d.city  || '';
+              inputEl._state = d.state || '';
+              drop.style.display = 'none';
+              onPick?.({ address: inputEl.value, lat: inputEl._lat, lng: inputEl._lng,
+                         city: inputEl._city, state: inputEl._state });
+              if (d.city && d.state) showCityRate(inputEl, d.city, d.state);
+            } catch {}
+          });
+        });
+      } catch {}
+    }, 280);
+  });
+
+  inputEl.addEventListener('blur',    () => setTimeout(() => { drop.style.display = 'none'; }, 200));
+  inputEl.addEventListener('keydown', e => { if (e.key === 'Escape') drop.style.display = 'none'; });
+  window.addEventListener('scroll', positionDrop, { passive: true, capture: true });
+  window.addEventListener('resize', positionDrop);
+}
+
+async function showCityRate(inputEl, city, state) {
+  // Find or create the badge element next to this input
+  let badge = inputEl._rateBadge;
+  if (!badge) {
+    badge = document.createElement('div');
+    badge.className = 'city-rate-badge';
+    inputEl.parentNode.insertBefore(badge, inputEl.nextSibling);
+    inputEl._rateBadge = badge;
+  }
+  badge.textContent = 'Looking up close rate…';
+  badge.className = 'city-rate-badge loading';
+  try {
+    const res  = await apiFetch(`${API}/api/reports/city-rate?city=${encodeURIComponent(city)}&state=${encodeURIComponent(state)}`);
+    const data = await res.json();
+    if (data.probability === null || data.probability === undefined || data.areaAppts === 0) {
+      badge.textContent = `${city}, ${state} — no ${data.year || ''} appointment data yet`;
+      badge.className = 'city-rate-badge no-data';
+    } else {
+      const cls = data.probability >= 10 ? 'good' : data.probability >= 4 ? 'mid' : 'low';
+      badge.textContent = `${data.area ? data.area + ' area' : ''} · ${city}, ${state} — ${data.probability}% of area appointments (${data.cityAppts} of ${data.areaAppts} YTD)`;
+      badge.className = `city-rate-badge ${cls}`;
+    }
+  } catch {
+    badge.textContent = '';
+    badge.className = 'city-rate-badge';
+  }
+}
+
+// Attach autocomplete to the static manual-form address input on load
+document.addEventListener('DOMContentLoaded', () => {
+  setupAddrAutocomplete(document.getElementById('mAddr'));
+});
+
+// ── Manual entry form ──────────────────────────────────────────────────────
+let _manualFormOpen = false;
+
+function toggleManualForm() {
+  _manualFormOpen = !_manualFormOpen;
+  const form = document.getElementById('manualForm');
+  form.style.display = _manualFormOpen ? 'block' : 'none';
+  if (_manualFormOpen) {
+    document.getElementById('searchInput').value = '';
+    document.getElementById('contactsArea').innerHTML =
+      '<div class="empty"><div class="icon">🔍</div>Start typing to search customers</div>';
+    setTimeout(() => document.getElementById('mFirst')?.focus(), 50);
+  }
+}
+
+function submitManualEntry() {
+  const addrEl = document.getElementById('mAddr');
+  const addr   = (addrEl?.value || '').trim();
+  if (!addr) {
+    addrEl?.focus();
+    showToast('Address is required');
+    return;
+  }
+  const first = (document.getElementById('mFirst')?.value || '').trim() || 'Manual';
+  const last  = (document.getElementById('mLast')?.value  || '').trim() || 'Entry';
+  const phone = (document.getElementById('mPhone')?.value || '').trim();
+
+  const contact = {
+    id:        'manual-' + Date.now(),
+    firstName: first,
+    lastName:  last,
+    phone:     phone,
+    email:     '',
+    address:   addr,
+    lat:       addrEl?._lat || null,
+    lng:       addrEl?._lng || null,
+  };
+
+  _manualFormOpen = false;
+  document.getElementById('manualForm').style.display = 'none';
+
+  currentCustomer = contact;
+  loadScheduleOptions(contact);
+}
+
+async function loadScheduleOptions(contact) {
+  document.getElementById('rightPanel').innerHTML = `
+    <div style="padding-top:80px; text-align:center; color:var(--muted);">
+      <div class="spinner" style="width:32px;height:32px;border-width:3px;margin:0 auto 16px;"></div>
+      <div>Finding best options for <strong style="color:var(--text)">${contact.firstName} ${contact.lastName}</strong>…</div>
+    </div>`;
+  try {
+    const url = `${API}/api/schedule-options?customerId=${contact.id}` +
+      (contact.lat ? `&lat=${contact.lat}&lng=${contact.lng}` : '') +
+      `&firstName=${encodeURIComponent(contact.firstName||'')}` +
+      `&lastName=${encodeURIComponent(contact.lastName||'')}` +
+      `&phone=${encodeURIComponent(contact.phone||'')}` +
+      `&email=${encodeURIComponent(contact.email||'')}` +
+      `&address=${encodeURIComponent(contact.address||'')}`;
+    const res = await apiFetch(url);
+    const data = await res.json();
+    renderOptions(data);
+  } catch (err) {
+    document.getElementById('rightPanel').innerHTML = `
+      <div class="empty" style="margin-top:80px;">⚠ Failed to load schedule options.<br><small>${err.message}</small></div>`;
+  }
+}
+
+// ── Inline address editor ──────────────────────────────────────────────────
+function showAddressEditor() {
+  const editor = document.getElementById('addrEditor');
+  const input  = document.getElementById('editAddrInput');
+  if (!editor) return;
+  editor.style.display = 'block';
+  if (input) {
+    input.value = currentCustomer.address || '';
+    input._lat  = currentCustomer.lat  || null;
+    input._lng  = currentCustomer.lng  || null;
+    setupAddrAutocomplete(input);
+    input.focus();
+    input.select();
+  }
+}
+
+function applyEditAddress() {
+  const el   = document.getElementById('editAddrInput');
+  const addr = (el?.value || '').trim();
+  if (!addr) return;
+  currentCustomer = { ...currentCustomer, address: addr, lat: el?._lat || null, lng: el?._lng || null };
+  loadScheduleOptions(currentCustomer);
+}
+
+// ── Admin panel ─────────────────────────────────────────────────────────────
+let adminReps    = [];
+let adminClasses = {};   // { ClassName: { maxDaysOut, sameDayBufferMins } }
+let activeTab    = 'reps';
+
+function classNames() { return Object.keys(adminClasses).sort(); }
+
+async function openAdmin() {
+  document.getElementById('adminModal').classList.add('open');
+  switchTab('reps');
+  await loadAdminClasses();  // load classes first so datalist is populated
+  loadAdminReps();
+}
+function closeAdmin() {
+  document.getElementById('adminModal').classList.remove('open');
+}
+
+function switchTab(tab) {
+  activeTab = tab;
+  ['reps','classes','users'].forEach(t => {
+    document.getElementById(`tab-${t}`)?.classList.toggle('active', t === tab);
+    document.getElementById(`pane-${t}`)?.classList.toggle('active', t === tab);
+  });
+  if (tab === 'users') loadAdminUsers();
+  // Hide Save button on Users tab (users tab saves inline)
+  document.getElementById('saveBtn').style.display = tab === 'users' ? 'none' : '';
+}
+
+function saveActive() {
+  if (activeTab === 'reps') saveAdminReps();
+  else if (activeTab === 'classes') saveAdminClasses();
+}
+
+// ── Reps tab ─────────────────────────────────────────────────────────────────
+async function loadAdminReps() {
+  document.getElementById('repToggleList').innerHTML =
+    '<div class="empty"><div class="spinner"></div><br>Loading…</div>';
+  try {
+    const res = await apiFetch(`${API}/api/admin/reps`);
+    const data = await res.json();
+    adminReps = (data.reps || []).sort((a,b) => a.name.localeCompare(b.name));
+    renderAdminReps();
+  } catch {
+    document.getElementById('repToggleList').innerHTML = '<div class="empty">⚠ Failed to load reps</div>';
+  }
+}
+
+function renderAdminReps() {
+  if (!adminReps.length) {
+    document.getElementById('repToggleList').innerHTML = '<div class="empty">No reps found</div>';
+    return;
+  }
+
+  // Group by repClass; named groups sorted A-Z, unassigned last
+  const groups = {};
+  adminReps.forEach((r, i) => {
+    const cls = (r.repClass || '').trim();
+    if (!groups[cls]) groups[cls] = [];
+    groups[cls].push({ r, i });
+  });
+  const keys = Object.keys(groups).sort((a, b) => {
+    if (!a && b)  return 1;
+    if (a  && !b) return -1;
+    return a.localeCompare(b);
+  });
+
+  const locOpts = classNames().map(l => `<option value="${l}">`).join('');
+
+  let html = `<datalist id="loc-list">${locOpts}</datalist>`;
+  for (const cls of keys) {
+    html += `<div class="rep-class-header">${cls || 'Unassigned'}</div>`;
+    for (const { r, i } of groups[cls]) {
+      const initials = r.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+      const homeVal  = (r.homeAddress || '').replace(/"/g, '&quot;');
+      const classVal = (r.repClass   || '').replace(/"/g, '&quot;');
+      html += `
+        <div class="rep-toggle-row">
+          <div class="rep-avatar" style="background:${r.color};width:30px;height:30px;font-size:11px;flex-shrink:0">${initials}</div>
+          <span class="rtog-name" title="${r.name}">${r.name}</span>
+          <input list="loc-list" type="text" value="${classVal}"
+                 placeholder="Location…" class="rtog-class-input"
+                 oninput="adminReps[${i}].repClass=this.value" />
+          <div class="rtog-pct-wrap">
+            <input type="number" min="0" max="100" value="${r.priority_pct ?? 50}"
+                   oninput="adminReps[${i}].priority_pct=Math.max(0,Math.min(100,parseInt(this.value)||50))" />
+            <span>%</span>
+          </div>
+          <div class="rtog-pct-wrap" title="Typical appointment duration for this rep">
+            <input type="number" min="5" max="240" value="${r.apptDurationMins ?? 45}"
+                   oninput="adminReps[${i}].apptDurationMins=Math.max(5,Math.min(240,parseInt(this.value)||45))" />
+            <span>min</span>
+          </div>
+          <label class="toggle-switch">
+            <input type="checkbox" ${r.enabled !== false ? 'checked' : ''}
+                   onchange="adminReps[${i}].enabled=this.checked" />
+            <span class="toggle-track"></span>
+          </label>
+          <div class="rtog-home-wrap" style="width:100%">
+            <label>Home:</label>
+            <input type="text" value="${homeVal}"
+                   placeholder="Rep's home address for drive time calculations…"
+                   class="rtog-home-input"
+                   oninput="adminReps[${i}].homeAddress=this.value" />
+          </div>
+        </div>`;
+    }
+  }
+  document.getElementById('repToggleList').innerHTML = html;
+}
+
+async function saveAdminReps() {
+  const reps = {};
+  adminReps.forEach(r => {
+    reps[r.id] = {
+      enabled:          r.enabled !== false,
+      priority:         r.priority_pct ?? 50,
+      repClass:         (r.repClass    || '').trim(),
+      homeAddress:      (r.homeAddress || '').trim(),
+      apptDurationMins: r.apptDurationMins ?? 45,
+    };
+  });
+  try {
+    const res = await apiFetch(`${API}/api/admin/reps`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({reps}),
+    });
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    showToast('Rep settings saved');
+    closeAdmin();
+  } catch (err) {
+    showToast(`⚠ Failed to save: ${err.message}`);
+  }
+}
+
+// ── Classes tab ───────────────────────────────────────────────────────────────
+async function loadAdminClasses() {
+  document.getElementById('classSettingsList').innerHTML =
+    '<div class="empty"><div class="spinner"></div><br>Loading…</div>';
+  try {
+    const res = await apiFetch(`${API}/api/admin/classes`);
+    const data = await res.json();
+    adminClasses = data.classes || {};
+    renderAdminClasses();
+  } catch {
+    document.getElementById('classSettingsList').innerHTML = '<div class="empty">⚠ Failed to load classes</div>';
+  }
+}
+
+function renderAdminClasses() {
+  const names = classNames();
+  if (!names.length) {
+    document.getElementById('classSettingsList').innerHTML = '<div class="empty">No classes yet — add one below.</div>';
+    return;
+  }
+  let html = `
+    <div class="class-header-row">
+      <span class="ch-name">Class Name</span>
+      <span class="ch-days" title="How many days ahead this class can be scheduled">Max Days</span>
+      <span class="ch-max" title="On days with existing appointments, customer must be within this many drive minutes of at least one adjacent appointment. Empty days are exempt.">Max Drive (busy day)</span>
+      <span class="ch-buf" title="When the schedule gap is tight, customer must be within this many drive minutes of an adjacent appointment">Same-Day Buffer</span>
+      <span class="ch-gap" title="If the open window around a slot is this many minutes or more, the same-day buffer is bypassed — rep has time to travel">Gap to Bypass Buffer</span>
+      <span class="ch-del"></span>
+    </div>`;
+  names.forEach(name => {
+    const cfg = adminClasses[name];
+    const safeName = name.replace(/"/g, '&quot;');
+    html += `
+      <div class="class-row" data-class="${safeName}">
+        <input type="text" class="class-name-input" value="${safeName}"
+               onchange="renameClass('${safeName}', this.value)"
+               title="Class name (must be unique)" />
+        <div class="class-num-wrap">
+          <input type="number" class="class-num-input" min="1" max="60"
+                 value="${cfg.maxDaysOut ?? 7}"
+                 onchange="adminClasses['${safeName}'].maxDaysOut=Math.max(1,parseInt(this.value)||7)"
+                 title="Max days out to schedule" />
+          <label>days</label>
+        </div>
+        <div class="class-num-wrap">
+          <input type="number" class="class-num-input" min="0" max="480"
+                 value="${cfg.maxDriveMins ?? 90}"
+                 onchange="adminClasses['${safeName}'].maxDriveMins=Math.max(0,parseInt(this.value)||90)"
+                 title="Max drive from any adjacent appointment on busy days" />
+          <label>min</label>
+        </div>
+        <div class="class-num-wrap">
+          <input type="number" class="class-num-input" min="0" max="480"
+                 value="${cfg.sameDayBufferMins ?? 30}"
+                 onchange="adminClasses['${safeName}'].sameDayBufferMins=Math.max(0,parseInt(this.value)||30)"
+                 title="Max drive minutes from adjacent appointment when gap is tight" />
+          <label>min</label>
+        </div>
+        <div class="class-num-wrap">
+          <input type="number" class="class-num-input" min="0" max="1440"
+                 value="${cfg.sameDayGapMins ?? 120}"
+                 onchange="adminClasses['${safeName}'].sameDayGapMins=Math.max(0,parseInt(this.value)||120)"
+                 title="Open window (minutes) needed to bypass same-day buffer" />
+          <label>min</label>
+        </div>
+        <button class="class-del-btn" onclick="deleteClass('${safeName}')" title="Delete class">×</button>
+      </div>
+      <div class="class-shop-row">
+        <span class="class-shop-label">Shop address:</span>
+        <input type="text" class="class-shop-input"
+               value="${(cfg.shopAddresses || [])[0] || ''}"
+               placeholder="e.g. 123 Main St, Green Bay WI  (leave blank to skip out-of-area check)"
+               onchange="adminClasses['${safeName}'].shopAddresses=this.value.trim()?[this.value.trim()]:[]"
+               title="Address of your shop/office for this territory — used to flag customers that are far away" />
+        <div class="class-num-wrap">
+          <input type="number" class="class-num-input" min="0" max="480"
+                 value="${cfg.maxShopDriveMins ?? 0}"
+                 onchange="adminClasses['${safeName}'].maxShopDriveMins=Math.max(0,parseInt(this.value)||0)"
+                 title="Flag as out-of-area if customer is more than this many drive minutes from the shop (0 = disabled)" />
+          <label>min OOA</label>
+        </div>
+      </div>`;
+  });
+  document.getElementById('classSettingsList').innerHTML = html;
+}
+
+function renameClass(oldName, newName) {
+  newName = newName.trim();
+  if (!newName || newName === oldName) return;
+  if (adminClasses[newName] !== undefined) {
+    showToast('⚠ A class with that name already exists');
+    renderAdminClasses();
+    return;
+  }
+  adminClasses[newName] = adminClasses[oldName];
+  delete adminClasses[oldName];
+  // Update any reps that had the old class name
+  adminReps.forEach(r => { if (r.repClass === oldName) r.repClass = newName; });
+  renderAdminClasses();
+}
+
+function deleteClass(name) {
+  if (!confirm(`Delete class "${name}"? Reps assigned to it will become unassigned.`)) return;
+  delete adminClasses[name];
+  adminReps.forEach(r => { if (r.repClass === name) r.repClass = ''; });
+  renderAdminClasses();
+}
+
+function addClassRow() {
+  let n = 1;
+  while (adminClasses[`New Class ${n}`] !== undefined) n++;
+  const newName = `New Class ${n}`;
+  adminClasses[newName] = { maxDaysOut: 7, maxDriveMins: 90, sameDayBufferMins: 30, sameDayGapMins: 120, shopAddresses: [], maxShopDriveMins: 0 };
+  renderAdminClasses();
+  // Focus the new row's name input
+  const rows = document.querySelectorAll('.class-row');
+  const last = rows[rows.length - 1];
+  if (last) last.querySelector('.class-name-input')?.select();
+}
+
+async function saveAdminClasses() {
+  try {
+    const res = await apiFetch(`${API}/api/admin/classes`, {
+      method: 'POST',
+      headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({ classes: adminClasses }),
+    });
+    if (!res.ok) throw new Error(`Server returned ${res.status}`);
+    showToast('Class settings saved');
+    // Refresh rep datalist in case class names changed
+    renderAdminReps();
+    closeAdmin();
+  } catch (err) {
+    showToast(`⚠ Failed to save: ${err.message}`);
+  }
+}
+
+// ── Users tab ─────────────────────────────────────────────────────────────
+let _adminUsers = [];
+
+async function loadAdminUsers() {
+  try {
+    const res  = await apiFetch(`${API}/api/admin/users`);
+    const data = await res.json();
+    _adminUsers = data.users || [];
+    renderAdminUsers();
+  } catch {
+    document.getElementById('usersList').innerHTML = '<div class="empty">⚠ Failed to load users</div>';
+  }
+}
+
+function renderAdminUsers() {
+  const el = document.getElementById('usersList');
+  if (!_adminUsers.length) { el.innerHTML = '<div class="empty">No users found</div>'; return; }
+  el.innerHTML = _adminUsers.map(u => `
+    <div style="display:flex;align-items:center;gap:10px;padding:8px 0;border-bottom:1px solid var(--border)">
+      <span style="flex:1;font-size:13px;font-weight:600">${u.username}</span>
+      <span style="font-size:11px;padding:2px 8px;border-radius:10px;background:${u.role==='admin'?'rgba(99,102,241,.2)':'rgba(122,128,160,.15)'};color:${u.role==='admin'?'var(--accent-lt)':'var(--muted)'}">${u.role}</span>
+      <select onchange="adminSetRole('${u.username}',this.value)" style="padding:4px 6px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:12px;outline:none">
+        <option value="user"  ${u.role==='user' ?'selected':''}>user</option>
+        <option value="admin" ${u.role==='admin'?'selected':''}>admin</option>
+      </select>
+      <button onclick="adminResetPw('${u.username}')" style="padding:4px 8px;background:none;border:1px solid var(--border);border-radius:6px;color:var(--muted);font-size:11px;cursor:pointer">Reset pw</button>
+      <button onclick="adminDeleteUser('${u.username}')" style="padding:4px 8px;background:none;border:1px solid transparent;border-radius:6px;color:var(--red);font-size:18px;line-height:1;cursor:pointer">×</button>
+    </div>`).join('') + `
+  <div style="margin-top:14px;display:flex;gap:8px;flex-wrap:wrap">
+    <input id="newUserName" type="text" placeholder="Username" style="flex:1;min-width:100px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;outline:none" />
+    <input id="newUserPw"   type="password" placeholder="Password" style="flex:1;min-width:100px;padding:7px 10px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;outline:none" />
+    <select id="newUserRole" style="padding:7px 8px;background:var(--surface2);border:1px solid var(--border);border-radius:6px;color:var(--text);font-size:13px;outline:none">
+      <option value="user">user</option><option value="admin">admin</option>
+    </select>
+    <button onclick="adminCreateUser()" style="padding:7px 14px;background:var(--accent);border:none;border-radius:6px;color:#fff;font-size:13px;font-weight:600;cursor:pointer">Add</button>
+  </div>`;
+}
+
+async function adminCreateUser() {
+  const username = document.getElementById('newUserName').value.trim();
+  const password = document.getElementById('newUserPw').value;
+  const role     = document.getElementById('newUserRole').value;
+  if (!username || !password) { showToast('⚠ Username and password required'); return; }
+  try {
+    const res = await apiFetch(`${API}/api/admin/users`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action:'create', username, password, role}),
+    });
+    const d = await res.json();
+    if (!res.ok) { showToast(`⚠ ${d.error}`); return; }
+    showToast('User created');
+    loadAdminUsers();
+  } catch (e) { showToast(`⚠ ${e.message}`); }
+}
+
+async function adminDeleteUser(username) {
+  if (!confirm(`Delete user "${username}"?`)) return;
+  try {
+    const res = await apiFetch(`${API}/api/admin/users`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action:'delete', username}),
+    });
+    const d = await res.json();
+    if (!res.ok) { showToast(`⚠ ${d.error}`); return; }
+    showToast('User deleted');
+    loadAdminUsers();
+  } catch (e) { showToast(`⚠ ${e.message}`); }
+}
+
+async function adminSetRole(username, role) {
+  try {
+    await apiFetch(`${API}/api/admin/users`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action:'set-role', username, role}),
+    });
+    showToast('Role updated');
+    loadAdminUsers();
+  } catch (e) { showToast(`⚠ ${e.message}`); }
+}
+
+async function adminResetPw(username) {
+  const pw = prompt(`New password for "${username}":`);
+  if (!pw) return;
+  try {
+    const res = await apiFetch(`${API}/api/admin/users`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({action:'set-password', username, password: pw}),
+    });
+    const d = await res.json();
+    if (!res.ok) { showToast(`⚠ ${d.error}`); return; }
+    showToast('Password reset');
+  } catch (e) { showToast(`⚠ ${e.message}`); }
+}
+
+async function changeOwnPassword() {
+  const current = document.getElementById('cpCurrent').value;
+  const newPw   = document.getElementById('cpNew').value;
+  if (!current || !newPw) { showToast('⚠ Fill in both fields'); return; }
+  try {
+    const res = await apiFetch(`${API}/api/change-password`, {
+      method: 'POST', headers: {'Content-Type': 'application/json'},
+      body: JSON.stringify({current, new: newPw}),
+    });
+    const d = await res.json();
+    if (!res.ok) { showToast(`⚠ ${d.error}`); return; }
+    showToast('Password changed');
+    document.getElementById('cpCurrent').value = '';
+    document.getElementById('cpNew').value     = '';
+  } catch (e) { showToast(`⚠ ${e.message}`); }
+}
+
+// ── Render schedule options ────────────────────────────────────────────────
+function renderOptions({ customer, options, extraOptions }) {
+  if (!options || !options.length) {
+    document.getElementById('rightPanel').innerHTML = `
+      <div class="empty" style="margin-top:80px;">No available slots found in the next 7 days.</div>`;
+    return;
+  }
+
+  const panel = document.getElementById('rightPanel');
+  panel.innerHTML = `
+    <div class="right-header">
+      <div class="customer-summary">
+        <h2>${customer.firstName} ${customer.lastName}</h2>
+        <p id="addrDisplay">
+          ${customer.phone || ''}${customer.address ? (customer.phone ? ' · ' : '') + customer.address : ''}
+          <span class="edit-addr-link" onclick="showAddressEditor()">✎ edit address</span>
+        </p>
+        <div id="addrEditor" style="display:none;margin-top:8px">
+          <div class="addr-input-row">
+            <input type="text" id="editAddrInput" placeholder="123 Main St, City, ST 12345"
+                   onkeydown="if(event.key==='Enter') applyEditAddress()" style="font-size:13px;padding:7px 10px" />
+            <button class="find-btn" style="font-size:13px;padding:7px 14px" onclick="applyEditAddress()">Update</button>
+          </div>
+        </div>
+      </div>
+      <button class="refresh-btn" onclick='loadScheduleOptions(${JSON.stringify(customer)})'>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M3 12a9 9 0 1 0 9-9 9.75 9.75 0 0 0-6.74 2.74L3 8"/><path d="M3 3v5h5"/>
+        </svg>
+        Refresh
+      </button>
+    </div>
+    <div class="section-label">Recommended Appointment Options</div>
+    <div class="options-grid" id="optionsGrid"></div>`;
+
+  const grid = document.getElementById('optionsGrid');
+  options.forEach((opt, i) => {
+    grid.appendChild(buildOptionCard(opt, i, customer));
+  });
+
+  if (extraOptions && extraOptions.length) {
+    const toggle = document.createElement('div');
+    toggle.className = 'more-options-toggle';
+    toggle.innerHTML = `
+      <div class="mot-line"></div>
+      <span class="mot-label">More options available</span>
+      <span class="mot-chevron">▼</span>
+      <div class="mot-line"></div>`;
+    panel.appendChild(toggle);
+
+    const extraGrid = document.createElement('div');
+    extraGrid.className = 'options-grid';
+    extraGrid.id = 'extraOptionsGrid';
+    extraOptions.forEach((opt, i) => {
+      extraGrid.appendChild(buildOptionCard(opt, options.length + i, customer, true));
+    });
+    panel.appendChild(extraGrid);
+
+    toggle.addEventListener('click', () => {
+      const open = extraGrid.classList.toggle('open');
+      toggle.classList.toggle('open', open);
+    });
+  }
+}
+
+function buildOptionCard(opt, i, customer, isExtra = false) {
+  const badgeClass = opt.isCleanDay ? 'badge-clean' : isExtra ? 'badge-3' : ['badge-1','badge-2','badge-3'][i] || 'badge-3';
+  const badgeLabel = opt.isCleanDay
+    ? '🧹 Clean Day'
+    : isExtra
+      ? `📅 Also ${opt.dayLabel}`
+      : ['⭐ Best Option', '✅ Option 2', '📅 Option 3'][i] || `Option ${i+1}`;
+
+  const driveClass = opt.driveMinutes == null || opt.driveMinutes === 0 ? 'ok'
+                   : opt.driveMinutes <= 30  ? 'ok'
+                   : opt.driveMinutes <= 45  ? 'warn' : 'over';
+
+  const driveLabel = opt.driveMinutes == null
+    ? '—'
+    : opt.driveMinutes === 0
+      ? 'Start of day'
+      : formatDrive(opt.driveMinutes);
+
+  const prob = opt.areaProbability;
+  const probClass = prob >= 60 ? 'high' : prob >= 35 ? 'medium' : 'low';
+
+  const initials = opt.rep.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+
+  // Rep priority rank label
+  const priorityLabel = opt.rep.priority
+    ? `Priority #${opt.rep.priority}`
+    : '';
+
+  const el = document.createElement('div');
+  el.className = 'option-card';
+  el.innerHTML = `
+    <div class="option-badge ${badgeClass}">${badgeLabel}</div>
+    <div class="option-body">
+      <div class="rep-row">
+        <div class="rep-avatar" style="background:${opt.rep.color}">${initials}</div>
+        <div>
+          <div class="rep-name">${opt.rep.name}</div>
+          <div class="rep-priority">${priorityLabel}</div>
+        </div>
+      </div>
+
+      <div class="time-display">
+        <div class="day">${opt.dayLabel}</div>
+        <div class="divider">·</div>
+        <div class="clock">${opt.timeLabel}</div>
+      </div>
+
+      <div class="drive-row">
+        <svg class="drive-icon" width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <path d="M12 22s8-4 8-10V5l-8-3-8 3v7c0 6 8 10 8 10"/>
+        </svg>
+        <span class="drive-time ${driveClass}">${driveLabel}</span>
+        <span style="color:var(--muted)">from</span>
+        <span class="drive-from" title="${opt.driveFromAddress}">${opt.driveFromAddress}</span>
+      </div>
+
+      ${opt.postDriveMinutes != null ? (() => {
+        const pdClass = opt.postDriveOk ? 'ok' : 'over';
+        const pdLabel = formatDrive(opt.postDriveMinutes);
+        const pdAddr  = opt.postDriveAddress || 'next appointment';
+        return `<div class="post-drive-row">
+          <svg width="13" height="13" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+            <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+          </svg>
+          <span class="drive-time ${pdClass}">${pdLabel}</span>
+          <span>to next appt</span>
+          <span class="drive-from" title="${pdAddr}">${pdAddr}</span>
+        </div>`;
+      })() : ''}
+
+
+      <div class="prob-row">
+        <span class="prob-label">Area probability</span>
+        <div class="prob-bar-wrap">
+          <div class="prob-bar ${probClass}" style="width:${prob}%"></div>
+        </div>
+        <span class="prob-pct ${probClass}">${prob}%</span>
+      </div>
+
+      ${opt.isCleanDay ? `
+        <div class="clean-flag">🧹 No prior appointments nearby — fresh area start</div>
+      ` : ''}
+
+      ${opt.outOfArea ? `
+        <div class="ota-flag">⚠ ${opt.shopDriveMins} min from nearest shop — may be out of area</div>
+      ` : ''}
+
+      <button class="select-btn" id="sel-${i}-${opt.rep.id}"
+              onclick='copySlot(this, ${JSON.stringify(opt)}, ${JSON.stringify(customer)})'>
+        <svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+          <rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/>
+        </svg>
+        Copy Slot Info
+      </button>
+    </div>`;
+  return el;
+}
+
+// ── Utilities ──────────────────────────────────────────────────────────────
+function formatDrive(mins) {
+  if (mins < 60) return `${mins} min`;
+  const h = Math.floor(mins / 60);
+  const m = mins % 60;
+  return m === 0 ? `${h} hr` : `${h} hr ${m} min`;
+}
+
+// ── Copy slot info ─────────────────────────────────────────────────────────
+// Builds a clean text snippet the agent can paste or read aloud, then
+// copies it to the clipboard. No data is written back to Builder Prime.
+function copySlot(btn, opt, customer) {
+  const driveStr = opt.driveMinutes == null
+    ? 'First appointment of the day'
+    : opt.driveMinutes === 0
+      ? 'Start of day'
+      : `${formatDrive(opt.driveMinutes)} drive from prior appointment`;
+
+  const postNote = opt.postDriveMinutes != null
+    ? `\nTo next appt : ${formatDrive(opt.postDriveMinutes)}${opt.postDriveOk ? '' : ' ⚠ tight'}`
+    : '';
+  const cleanNote = opt.isCleanDay
+    ? '\n🧹 Clean start — no prior appointments in area' : '';
+
+  const text =
+`── Scheduling Option ──────────────────
+Customer : ${customer.firstName} ${customer.lastName}
+Rep      : ${opt.rep.name}
+Day/Time : ${opt.dayLabel} at ${opt.timeLabel}
+Drive    : ${driveStr}${postNote}
+Area %   : ${opt.areaProbability}% likelihood of nearby add-on${cleanNote}
+────────────────────────────────────────`;
+
+  navigator.clipboard.writeText(text).then(() => {
+    btn.classList.add('copied');
+    btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.5" stroke-linecap="round"><polyline points="20 6 9 17 4 12"/></svg> Copied!`;
+    showToast('Slot info copied to clipboard');
+    setTimeout(() => {
+      btn.classList.remove('copied');
+      btn.innerHTML = `<svg width="14" height="14" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round"><rect x="9" y="9" width="13" height="13" rx="2"/><path d="M5 15H4a2 2 0 0 1-2-2V4a2 2 0 0 1 2-2h9a2 2 0 0 1 2 2v1"/></svg> Copy Slot Info`;
+    }, 2500);
+  }).catch(() => {
+    showToast('⚠ Copy failed — check browser permissions');
+  });
+}
+
+// ── Toast ──────────────────────────────────────────────────────────────────
+function showToast(msg) {
+  const t = document.getElementById('toast');
+  t.textContent = msg;
+  t.classList.add('show');
+  setTimeout(() => t.classList.remove('show'), 3000);
+}
+
+// ── Conflict scan ─────────────────────────────────────────────────────────
+function openConflicts() {
+  document.getElementById('conflictModal').classList.add('open');
+  runConflictScan();
+}
+function closeConflicts() {
+  document.getElementById('conflictModal').classList.remove('open');
+}
+
+async function runConflictScan() {
+  document.getElementById('conflictBody').innerHTML =
+    '<div class="empty"><div class="spinner"></div><br>Scanning appointments…</div>';
+  try {
+    const res  = await apiFetch(`${API}/api/conflicts`);
+    const data = await res.json();
+    renderConflicts(data.issues || []);
+  } catch (err) {
+    document.getElementById('conflictBody').innerHTML =
+      `<div class="empty">⚠ Scan failed: ${err.message}</div>`;
+  }
+}
+
+function renderConflicts(issues) {
+  const badge = document.getElementById('scanBadge');
+  const btn   = document.getElementById('scanBtn');
+  const criticals = issues.filter(i => i.severity === 'critical');
+
+  if (criticals.length) {
+    badge.textContent = criticals.length;
+    badge.classList.add('show');
+    btn.classList.add('has-issues');
+  } else {
+    badge.classList.remove('show');
+    btn.classList.remove('has-issues');
+  }
+
+  if (!issues.length) {
+    document.getElementById('conflictBody').innerHTML = `
+      <div class="empty" style="padding:40px 0">
+        <div style="font-size:32px;margin-bottom:10px">✅</div>
+        No scheduling conflicts found in the next 14 days.
+      </div>`;
+    return;
+  }
+
+  const html = issues.map(issue => {
+    const initials = issue.rep.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+    const isCrit   = issue.severity === 'critical';
+    const driveStr = `${issue.driveMinutes} min drive`;
+    const avail    = `${issue.availableMinutes} min available`;
+    const detail   = isCrit
+      ? `Rep needs <strong>${issue.driveMinutes} min</strong> to drive but only has <strong>${issue.availableMinutes} min</strong> — <strong>${Math.abs(issue.bufferMinutes)} min short</strong>`
+      : `Rep can make it but only has <strong>${issue.bufferMinutes} min</strong> to spare after the drive`;
+    return `
+      <div class="issue-card ${issue.severity}">
+        <div class="issue-top">
+          <span class="issue-badge ${issue.severity}">${isCrit ? '⛔ Conflict' : '⚠ Tight'}</span>
+          <div class="issue-rep">
+            <div class="rep-avatar" style="background:${issue.rep.color};width:26px;height:26px;font-size:10px">${initials}</div>
+            <span class="issue-rep-name">${issue.rep.name}</span>
+          </div>
+          <span class="issue-day">${issue.dayLabel}</span>
+        </div>
+        <div class="issue-flow">
+          <div class="issue-appt">
+            <div class="issue-time">${issue.apptA.timeLabel}</div>
+            <div class="issue-addr">${issue.apptA.address}</div>
+          </div>
+          <div class="issue-arrow">
+            <svg width="16" height="16" viewBox="0 0 24 24" fill="none" stroke="currentColor" stroke-width="2.2" stroke-linecap="round">
+              <line x1="5" y1="12" x2="19" y2="12"/><polyline points="12 5 19 12 12 19"/>
+            </svg>
+            <span class="issue-drive ${issue.severity}">${driveStr}</span>
+          </div>
+          <div class="issue-appt">
+            <div class="issue-time">${issue.apptB.timeLabel}</div>
+            <div class="issue-addr">${issue.apptB.address}</div>
+          </div>
+        </div>
+        <div class="issue-detail">${detail}</div>
+      </div>`;
+  }).join('');
+
+  document.getElementById('conflictBody').innerHTML = html;
+}
+
+// ── Optimizer ─────────────────────────────────────────────────────────────
+function openOptimizer() {
+  document.getElementById('optimizerModal').classList.add('open');
+  runOptimizer();
+}
+function closeOptimizer() {
+  document.getElementById('optimizerModal').classList.remove('open');
+}
+
+async function runOptimizer() {
+  document.getElementById('optimizerBody').innerHTML =
+    '<div class="empty"><div class="spinner"></div><br>Analyzing schedules…</div>';
+  try {
+    const res  = await apiFetch(`${API}/api/schedule-optimizer`);
+    const data = await res.json();
+    renderSwaps(data.suggestions || []);
+  } catch (err) {
+    document.getElementById('optimizerBody').innerHTML =
+      `<div class="empty">⚠ Scan failed: ${err.message}</div>`;
+  }
+}
+
+function shortAddr(a) { return (a || '').split(',')[0].trim() || a; }
+
+function schedLine(items, isAfter) {
+  const lbl = `<span class="sched-lbl">${isAfter ? 'After:' : 'Before:'}</span>`;
+  const chips = items.map((item, k) => {
+    const mt = item.markType; // "incoming", "outgoing", or null
+    const chipCls = mt ? ` ${mt}` : '';
+    const prevMt  = k > 0 ? items[k-1].markType : null;
+    const legCls  = (mt === 'incoming' || prevMt === 'incoming') ? ' changed' : '';
+    const arrow   = k === 0
+      ? `<span class="sched-leg">🏠 ${item.driveIn}m ▶</span>`
+      : `<span class="sched-leg${legCls}">${item.driveIn}m ▶</span>`;
+    const chip = `<span class="sched-appt${chipCls}"><span class="sched-appt-time">${item.timeLabel}</span><span class="sched-appt-addr"> · ${shortAddr(item.address)}</span></span>`;
+    return arrow + chip;
+  }).join('');
+  return `<div class="sched-row">${lbl}${chips}</div>`;
+}
+
+function renderSwaps(suggestions) {
+  if (!suggestions.length) {
+    document.getElementById('optimizerBody').innerHTML = `
+      <div class="empty" style="padding:40px 0">
+        <div style="font-size:32px;margin-bottom:10px">✅</div>
+        No beneficial appointment swaps found in the next 21 days.
+      </div>`;
+    return;
+  }
+
+  const html = suggestions.map(s => {
+    const initA  = s.repA.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+    const initB  = s.repB.name.split(' ').map(n=>n[0]).join('').slice(0,2).toUpperCase();
+    const deltaA = s.currentDriveA - s.newDriveA;
+    const deltaB = s.currentDriveB - s.newDriveB;
+
+    const badgeCls = s.type === 'time-adjusted' ? ' time-adjusted' : '';
+    const typeLabel = s.type === 'swap' ? 'Trade' : s.type === 'move' ? 'Move' : 'Time-adjusted';
+    const timeShiftHtml = s.timeShift
+      ? `<span class="swap-time-shift">(Customer time shifts ${s.timeShift})</span>`
+      : '';
+
+    const repBlock = (rep, init, before, after, deltaMin) => {
+      const sign     = deltaMin > 0 ? '−' : '+';
+      const absD     = Math.abs(deltaMin);
+      const deltaCls = deltaMin >= 0 ? 'save' : 'cost';
+      // Only show schedule lines if there are appointments
+      const schedHtml = before.length
+        ? schedLine(before, false) + schedLine(after, true)
+        : '';
+      return `
+        <div class="swap-rep-block">
+          <div class="swap-rep-hdr">
+            <div class="rep-avatar" style="background:${rep.color};width:26px;height:26px;font-size:10px">${init}</div>
+            <span class="swap-rep-name">${rep.name}</span>
+            <span class="swap-rep-delta ${deltaCls}">${sign}${absD} min/day</span>
+          </div>
+          ${schedHtml}
+        </div>`;
+    };
+
+    return `
+      <div class="swap-card">
+        <div class="swap-header">
+          <span class="swap-day">${s.dayLabel}</span>
+          <div style="display:flex;align-items:center;gap:6px">
+            <span class="swap-type-badge${badgeCls}">${typeLabel}</span>
+            <span class="swap-save">Save ${s.minutesSaved} min</span>
+          </div>
+        </div>
+        <div class="swap-description">${s.description}${timeShiftHtml}</div>
+        ${repBlock(s.repA, initA, s.schedA, s.schedAfterA, deltaA)}
+        ${repBlock(s.repB, initB, s.schedB, s.schedAfterB, deltaB)}
+      </div>`;
+  }).join('');
+
+  document.getElementById('optimizerBody').innerHTML = html;
+}
+
+// ── Reports ───────────────────────────────────────────────────────────────
+function openReports() {
+  document.getElementById('reportModal').classList.add('open');
+  setReportRange('year');
+}
+
+function setReportRange(val) {
+  const now   = new Date();
+  const start = new Date(now);
+  if (val === 'year') {
+    start.setMonth(0); start.setDate(1);
+  } else {
+    start.setMonth(now.getMonth() - val);
+  }
+  document.getElementById('reportEnd').value   = now.toISOString().slice(0,10);
+  document.getElementById('reportStart').value = start.toISOString().slice(0,10);
+  loadReport();
+}
+
+function closeReports() {
+  document.getElementById('reportModal').classList.remove('open');
+}
+
+let _lastReportData = null;
+
+async function loadReport() {
+  const start = document.getElementById('reportStart').value;
+  const end   = document.getElementById('reportEnd').value;
+  document.getElementById('reportContent').innerHTML =
+    '<div class="empty"><div class="spinner"></div><br>Calculating close rates…</div>';
+  document.getElementById('exportReportBtn').style.display = 'none';
+  try {
+    const res  = await apiFetch(`${API}/api/reports/close-rates?start=${start}&end=${end}`);
+    const data = await res.json();
+    _lastReportData = data;
+    renderReport(data);
+    if (data.totalLeads > 0) document.getElementById('exportReportBtn').style.display = '';
+  } catch (err) {
+    document.getElementById('reportContent').innerHTML =
+      `<div class="empty">⚠ Failed to load report: ${err.message}</div>`;
+  }
+}
+
+function exportReport() {
+  if (!_lastReportData) return;
+  const d = _lastReportData;
+  const rows = [];
+  const q = s => `"${String(s).replace(/"/g, '""')}"`;
+
+  rows.push([q('BAM Coatings - Close Rate Report')]);
+  rows.push([q(`Period: ${d.dateRange.start} to ${d.dateRange.end}`)]);
+  rows.push([]);
+  rows.push([q('OVERALL'), q(''), q(d.totalLeads), q(d.totalSold), q(d.overallRate + '%')]);
+  rows.push([]);
+  rows.push([q('Area'), q('City'), q('Total Leads'), q('Sold'), q('Close Rate')]);
+
+  const areaOrder = ['Iowa', 'Ft Worth', 'Green Bay', 'Milwaukee'];
+  const grouped = {};
+  (d.byArea || []).forEach(r => {
+    const a = r.area || 'Other';
+    if (!grouped[a]) grouped[a] = [];
+    grouped[a].push(r);
+  });
+
+  areaOrder.forEach(area => {
+    const aRows = grouped[area];
+    if (!aRows || !aRows.length) return;
+    const aTotal = aRows.reduce((s, r) => s + r.total, 0);
+    const aSold  = aRows.reduce((s, r) => s + r.sold,  0);
+    const aRate  = aTotal > 0 ? Math.round(aSold / aTotal * 1000) / 10 : 0;
+    rows.push([q(area), q('(Total)'), q(aTotal), q(aSold), q(aRate + '%')]);
+    aRows.forEach(r => rows.push([q(area), q(r.label), q(r.total), q(r.sold), q(r.rate + '%')]));
+    rows.push([]);
+  });
+
+  const csv = rows.map(r => r.join(',')).join('\r\n');
+  const blob = new Blob([csv], { type: 'text/csv' });
+  const url  = URL.createObjectURL(blob);
+  const a    = document.createElement('a');
+  a.href     = url;
+  a.download = `close-rate-${d.dateRange.start}-to-${d.dateRange.end}.csv`;
+  a.click();
+  URL.revokeObjectURL(url);
+}
+
+function renderReport(data) {
+  const avg = data.overallRate;
+
+  function rateClass(rate, total) {
+    if (total === 0) return 'at';
+    if (rate >= avg * 1.12) return 'above';
+    if (rate <= avg * 0.88) return 'below';
+    return 'at';
+  }
+
+  function buildTable(rows) {
+    if (!rows || !rows.length) return '<div class="empty" style="padding:16px 0">No data</div>';
+    const hasArea = rows.some(r => r.area);
+    if (!hasArea) {
+      // Flat table fallback (old server code or no area grouping)
+      return `<table class="report-table">${rows.map(r => {
+        const rc = rateClass(r.rate, r.total);
+        return `<tr>
+          <td class="report-label" title="${r.label}">${r.label}</td>
+          <td class="report-bar-wrap"><div class="report-bar-bg"><div class="report-bar-fill ${rc}" style="width:${Math.min(100,Math.round(r.rate*2))}%"></div></div></td>
+          <td class="report-count">${r.sold}/${r.total}</td>
+          <td class="report-rate ${rc}">${r.total > 0 ? r.rate + '%' : '—'}</td>
+        </tr>`;
+      }).join('')}</table>`;
+    }
+    const areaOrder = ['Iowa', 'Ft Worth', 'Green Bay', 'Milwaukee'];
+    const grouped = {};
+    rows.forEach(r => {
+      const a = r.area || 'Other';
+      if (!grouped[a]) grouped[a] = [];
+      grouped[a].push(r);
+    });
+    let html = '<table class="report-table">';
+    areaOrder.forEach(area => {
+      const aRows = grouped[area];
+      if (!aRows || !aRows.length) return;
+      const aTotal = aRows.reduce((s, r) => s + r.total, 0);
+      const aSold  = aRows.reduce((s, r) => s + r.sold,  0);
+      const aRate  = aTotal > 0 ? Math.round(aSold / aTotal * 1000) / 10 : 0;
+      const arc    = rateClass(aRate, aTotal);
+      html += `<tr class="area-header-row">
+        <td class="report-label" style="font-weight:600;color:var(--fg)">${area}</td>
+        <td class="report-bar-wrap"><div class="report-bar-bg"><div class="report-bar-fill ${arc}" style="width:${Math.min(100,Math.round(aRate*2))}%"></div></div></td>
+        <td class="report-count" style="font-weight:600">${aSold}/${aTotal}</td>
+        <td class="report-rate ${arc}" style="font-weight:600">${aTotal > 0 ? aRate + '%' : '—'}</td>
+      </tr>`;
+      aRows.forEach(r => {
+        const rc   = rateClass(r.rate, r.total);
+        const barW = Math.min(100, Math.round(r.rate * 2));
+        html += `<tr>
+          <td class="report-label" style="padding-left:20px;color:var(--muted)" title="${r.label}">${r.label}</td>
+          <td class="report-bar-wrap"><div class="report-bar-bg"><div class="report-bar-fill ${rc}" style="width:${barW}%"></div></div></td>
+          <td class="report-count">${r.sold}/${r.total}</td>
+          <td class="report-rate ${rc}">${r.total > 0 ? r.rate + '%' : '—'}</td>
+        </tr>`;
+      });
+    });
+    // Any unrecognized areas
+    Object.keys(grouped).filter(a => !areaOrder.includes(a)).forEach(area => {
+      (grouped[area] || []).forEach(r => {
+        const rc = rateClass(r.rate, r.total);
+        html += `<tr>
+          <td class="report-label" title="${r.label}">${r.label}</td>
+          <td class="report-bar-wrap"><div class="report-bar-bg"><div class="report-bar-fill ${rc}" style="width:${Math.min(100,Math.round(r.rate*2))}%"></div></div></td>
+          <td class="report-count">${r.sold}/${r.total}</td>
+          <td class="report-rate ${rc}">${r.total > 0 ? r.rate + '%' : '—'}</td>
+        </tr>`;
+      });
+    });
+    html += '</table>';
+    return html;
+  }
+
+  const overallColor = avg >= 30 ? 'var(--green)' : avg >= 15 ? 'var(--amber)' : 'var(--red)';
+
+  document.getElementById('reportContent').innerHTML = `
+    <div class="report-summary">
+      <div class="report-stat">
+        <span class="rs-val" style="color:var(--accent-lt)">${data.totalLeads.toLocaleString()}</span>
+        <span class="rs-lbl">Total Leads</span>
+      </div>
+      <div class="report-divider"></div>
+      <div class="report-stat">
+        <span class="rs-val" style="color:var(--green)">${data.totalSold.toLocaleString()}</span>
+        <span class="rs-lbl">Jobs Sold</span>
+      </div>
+      <div class="report-divider"></div>
+      <div class="report-stat">
+        <span class="rs-val" style="color:${overallColor}">${data.overallRate}%</span>
+        <span class="rs-lbl">Overall Close Rate</span>
+      </div>
+    </div>
+    <p class="report-note" style="color:var(--muted);margin-top:6px">
+      Based on lead created date · Green = above avg · Amber = near avg · Red = below avg
+      ${data.cacheSize ? `· ${data.cacheSize.toLocaleString()} clients in cache` : ''}
+    </p>
+    <div class="report-section-title">Close Rate by City</div>
+    ${data.totalLeads === 0 ? `<div class="empty" style="padding:20px 0">
+      No leads found for this date range. The server is still loading client data —
+      try again in a few minutes, or expand the date range.
+    </div>` : buildTable(data.byArea)}
+    ${data.statusBreakdown && data.statusBreakdown.length ? `
+    <div class="report-section-title" style="margin-top:16px">Status Breakdown</div>
+    <table class="report-table">${data.statusBreakdown.map(([s,n]) =>
+      `<tr><td class="report-label">${s}</td><td class="report-count" colspan="3">${n}</td></tr>`
+    ).join('')}</table>` : ''}
+  `;
+}
+
+// ── Boot ───────────────────────────────────────────────────────────────────
+init();
+</script>
+</body>
+</html>

@@ -1,0 +1,14 @@
+# API keys — never commit these
+.env
+
+# Large geocode/drive-time cache — rebuilds automatically from Google Maps
+client_cache.json
+
+# Python
+__pycache__/
+*.pyc
+*.pyo
+
+# Logs
+*.log
+cloudflared-err.log
